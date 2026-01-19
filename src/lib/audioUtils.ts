@@ -12,28 +12,44 @@ const cleanText = (text: string): string => {
     .trim();
 };
 
-// Count syllables (approximate for Korean and other languages)
-const countSyllables = (text: string): number => {
-  // For Korean: count characters (each character is roughly a syllable)
-  // For other languages: count vowel groups
-  const koreanChars = text.match(/[가-힣]/g);
-  if (koreanChars && koreanChars.length > 0) {
-    return koreanChars.length;
-  }
-  
-  // For non-Korean: count vowel groups
-  const vowels = text.match(/[aeiouAEIOU가-힣]/gi);
-  return vowels ? vowels.length : text.length;
-};
-
 // Get language code for TTS
 const getLanguageCode = (text: string): string => {
   // Check if text contains Korean characters
   if (/[가-힣]/.test(text)) {
-    return 'ko'; // Korean
+    return 'ko-KR'; // Korean (Korea) - more specific for better voice matching
   }
-  // Default to English (can be extended for other languages)
-  return 'en';
+  // Default to English
+  return 'en-US';
+};
+
+// Find the best Korean voice available
+const findKoreanVoice = (voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null => {
+  // Priority list for Korean voices (prefer female voices for clearer pronunciation)
+  const koreanVoicePriority = [
+    'Google 한국의', // Google Korean
+    'Microsoft Heami', // Microsoft Korean female
+    'Microsoft SunHi', // Microsoft Korean female
+    'Yuna', // Apple Korean female
+    'ko-KR', // Generic Korean
+    'ko_KR',
+    'Korean',
+  ];
+
+  // Try to find voice by priority
+  for (const preferred of koreanVoicePriority) {
+    const voice = voices.find(v => 
+      v.name.includes(preferred) || 
+      v.lang.includes(preferred) ||
+      v.lang.toLowerCase() === 'ko-kr'
+    );
+    if (voice) return voice;
+  }
+
+  // Fallback: any voice that supports Korean
+  return voices.find(v => 
+    v.lang.toLowerCase().startsWith('ko') ||
+    v.name.toLowerCase().includes('korean')
+  ) || null;
 };
 
 /**
@@ -60,11 +76,13 @@ export const playWordAudio = async (
   if (!cleanedText) return;
 
   const langCode = getLanguageCode(cleanedText);
-  const syllableCount = countSyllables(cleanedText);
+  const isKorean = langCode.startsWith('ko');
   
-  // Adjust rate for complex words (> 4 syllables)
-  const baseRate = 0.8;
-  const rate = syllableCount > 4 ? 0.6 : baseRate;
+  // Voice settings for natural sound
+  // Rate: 0.95-1.0 for natural speed (not too slow)
+  // Pitch: 1.1 for slightly cheerful tone (not robotic)
+  const rate = isKorean ? 0.95 : 1.0;  // Slightly slower for Korean to hear clearly
+  const pitch = 1.1;  // Slightly higher pitch for more natural/friendly tone
 
   // Reset speech synthesis before starting new audio
   if ('speechSynthesis' in window) {
@@ -91,22 +109,30 @@ export const playWordAudio = async (
         voices = getVoices();
       }
 
-      // Find available voice for the language
-      const availableVoice = voices.find(voice => {
-        const voiceLang = voice.lang.toLowerCase();
-        return voiceLang.startsWith(langCode.toLowerCase()) || 
-               (langCode === 'ko' && (voiceLang.includes('korean') || voiceLang.includes('ko')));
-      });
+      // Find the best voice for the language
+      let selectedVoice: SpeechSynthesisVoice | null = null;
+      
+      if (isKorean) {
+        // Use specialized Korean voice finder
+        selectedVoice = findKoreanVoice(voices);
+      } else {
+        // Find English voice (prefer female for clarity)
+        selectedVoice = voices.find(v => 
+          v.lang.toLowerCase().startsWith('en') && 
+          (v.name.includes('Female') || v.name.includes('Samantha') || v.name.includes('Google'))
+        ) || voices.find(v => v.lang.toLowerCase().startsWith('en')) || null;
+      }
 
       // If no specific voice found, use default (will use system default)
-      if (availableVoice || voices.length > 0) {
+      if (selectedVoice || voices.length > 0) {
         // Use Promise to track if speech actually started
         const speechPromise = new Promise<boolean>((resolve) => {
           const utterance = new SpeechSynthesisUtterance(cleanedText);
-          if (availableVoice) {
-            utterance.voice = availableVoice;
+          if (selectedVoice) {
+            utterance.voice = selectedVoice;
           }
           utterance.rate = rate;
+          utterance.pitch = pitch;  // Add pitch for more natural tone
           utterance.lang = langCode;
           utterance.volume = 1;
 
@@ -171,10 +197,12 @@ export const playWordAudio = async (
     try {
       if (onPlaying) onPlaying();
       
-      const googleTTSUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanedText)}&tl=${langCode}&client=tw-ob`;
+      // Google TTS uses short language codes (ko, en, etc.)
+      const googleLangCode = isKorean ? 'ko' : 'en';
+      const googleTTSUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanedText)}&tl=${googleLangCode}&client=tw-ob`;
       
       const audio = new Audio(googleTTSUrl);
-      audio.playbackRate = rate;
+      audio.playbackRate = 1.0;  // Normal speed for Google TTS (already natural)
       
       if (onEnded) {
         audio.onended = onEnded;
