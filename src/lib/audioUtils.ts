@@ -1,39 +1,44 @@
 /**
  * Utility functions for word pronunciation audio
  * Hybrid approach: Web Speech API (offline) + Google TTS (online fallback)
- * Anti-Transformer Edition: Natural, human-like voices only!
+ * Mobile-optimized: Prioritize Google voices, locked pitch & rate
  */
 
 // Clean text from symbols and numbers
 const cleanText = (text: string): string => {
   return text
-    .replace(/[()[\]{}]/g, '') // Remove brackets and parentheses
-    .replace(/\d+/g, '') // Remove numbers
-    .replace(/[^\w\s가-힣ㄱ-ㅎㅏ-ㅣ]/g, '') // Keep only letters, spaces, and Korean characters
+    .replace(/[()[\]{}]/g, '')
+    .replace(/\d+/g, '')
+    .replace(/[^\w\s가-힣ㄱ-ㅎㅏ-ㅣ]/g, '')
     .trim();
 };
 
 // Get language code for TTS
 const getLanguageCode = (text: string): string => {
-  // Check if text contains Korean characters
   if (/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(text)) {
     return 'ko-KR';
   }
-  // Check for Indonesian (common words)
   if (/\b(dan|yang|dengan|untuk|ini|itu|adalah|dari|ke|di)\b/i.test(text)) {
     return 'id-ID';
   }
-  // Default to English
   return 'en-US';
 };
 
-// Cache for voices - Chrome mobile bug fix
+// =============================================
+// LOCKED TTS SETTINGS - DO NOT LET SYSTEM OVERRIDE
+// =============================================
+const TTS_SETTINGS = {
+  PITCH: 1.1,    // Slightly higher than default (1.0) for natural sound
+  RATE: 1.0,     // Normal speed - locked
+  VOLUME: 1.0    // Full volume
+};
+
+// Cache for voices
 let cachedVoices: SpeechSynthesisVoice[] = [];
 let voicesLoaded = false;
 
 /**
  * Initialize voices with Chrome mobile fix
- * Must be called before speaking to ensure voices are loaded
  */
 const initVoices = (): Promise<SpeechSynthesisVoice[]> => {
   return new Promise((resolve) => {
@@ -42,7 +47,6 @@ const initVoices = (): Promise<SpeechSynthesisVoice[]> => {
       return;
     }
 
-    // If already loaded, return cached
     if (voicesLoaded && cachedVoices.length > 0) {
       resolve(cachedVoices);
       return;
@@ -53,118 +57,93 @@ const initVoices = (): Promise<SpeechSynthesisVoice[]> => {
       if (cachedVoices.length > 0) {
         voicesLoaded = true;
         console.log(`🎙️ Loaded ${cachedVoices.length} voices`);
-        resolve(cachedVoices);
       }
     };
 
-    // Try immediate load
     loadVoices();
 
-    // Chrome mobile bug fix: voices load asynchronously
+    // Chrome mobile fix: voices load asynchronously via onvoiceschanged
     if (!voicesLoaded) {
       window.speechSynthesis.onvoiceschanged = () => {
         loadVoices();
+        resolve(cachedVoices);
       };
       
       // Timeout fallback
       setTimeout(() => {
         if (!voicesLoaded) {
           loadVoices();
-          resolve(cachedVoices);
         }
+        resolve(cachedVoices);
       }, 500);
+    } else {
+      resolve(cachedVoices);
     }
   });
 };
 
 /**
- * Find the best natural voice for a language
- * Priority: Female > Google > Natural > Microsoft > Default
- * NEVER use deep/robotic male voices!
+ * Find Google voice for specific language
+ * Priority: Google > Microsoft Female > Any Female > Default
  */
-const findBestVoice = (voices: SpeechSynthesisVoice[], langCode: string): SpeechSynthesisVoice | null => {
-  const lang = langCode.toLowerCase();
-  const isKorean = lang.startsWith('ko');
-  const isIndonesian = lang.startsWith('id');
-  const isEnglish = lang.startsWith('en');
-
-  // Filter voices that match the language
+const findGoogleVoice = (voices: SpeechSynthesisVoice[], langCode: string): SpeechSynthesisVoice | null => {
+  const langPrefix = langCode.toLowerCase().substring(0, 2);
+  
+  // Filter voices matching the language
   const matchingVoices = voices.filter(v => {
     const vLang = v.lang.toLowerCase();
-    if (isKorean) return vLang.startsWith('ko');
-    if (isIndonesian) return vLang.startsWith('id');
-    if (isEnglish) return vLang.startsWith('en');
-    return vLang.startsWith(lang.substring(0, 2));
+    return vLang.startsWith(langPrefix) || vLang === langCode.toLowerCase();
   });
 
   if (matchingVoices.length === 0) {
-    console.log(`⚠️ No voices found for ${langCode}`);
+    console.log(`⚠️ No voices for ${langCode}`);
     return null;
   }
 
-  console.log(`🔍 Found ${matchingVoices.length} voices for ${langCode}:`, 
-    matchingVoices.map(v => v.name).join(', '));
+  // Priority 1: Google voice (most stable on mobile)
+  const googleVoice = matchingVoices.find(v => 
+    v.name.toLowerCase().includes('google')
+  );
+  if (googleVoice) {
+    console.log(`✅ Found Google voice: ${googleVoice.name}`);
+    return googleVoice;
+  }
 
-  // Priority keywords for natural female voices
-  const priorityKeywords = [
-    'female', 'woman', 'girl',
-    'google', 'natural', 
-    'heami', 'sunhi', 'yuna', 'seoyeon', // Korean female names
-    'samantha', 'karen', 'moira', 'tessa', // English female names
-    'damayanti', 'winda', // Indonesian female names
-    'premium', 'enhanced', 'neural'
-  ];
-
-  // Negative keywords to avoid (deep male voices)
-  const avoidKeywords = [
-    'male', 'man', 'boy',
-    'daniel', 'thomas', 'fred', 'alex', 'bruce', 'lee',
-    'junior', 'grandpa', 'old'
-  ];
-
-  // Score each voice
-  const scoredVoices = matchingVoices.map(voice => {
-    const nameLower = voice.name.toLowerCase();
-    let score = 0;
-
-    // Bonus for priority keywords
-    for (const keyword of priorityKeywords) {
-      if (nameLower.includes(keyword)) {
-        score += 10;
-      }
-    }
-
-    // Penalty for avoid keywords
-    for (const keyword of avoidKeywords) {
-      if (nameLower.includes(keyword)) {
-        score -= 20;
-      }
-    }
-
-    // Extra bonus for Google voices (usually high quality)
-    if (nameLower.includes('google')) score += 15;
-    
-    // Extra bonus for Neural/Premium voices
-    if (nameLower.includes('neural') || nameLower.includes('premium')) score += 12;
-
-    // Bonus for remote/online voices (usually better quality)
-    if (!voice.localService) score += 5;
-
-    return { voice, score };
+  // Priority 2: Microsoft Female voice
+  const msFemalelist = ['heami', 'sunhi', 'yuna', 'seoyeon', 'zira', 'hazel', 'susan'];
+  const msFemale = matchingVoices.find(v => {
+    const name = v.name.toLowerCase();
+    return name.includes('microsoft') && msFemalelist.some(f => name.includes(f));
   });
+  if (msFemale) {
+    console.log(`✅ Found MS Female voice: ${msFemale.name}`);
+    return msFemale;
+  }
 
-  // Sort by score (highest first)
-  scoredVoices.sort((a, b) => b.score - a.score);
+  // Priority 3: Any Female voice
+  const femaleVoice = matchingVoices.find(v => {
+    const name = v.name.toLowerCase();
+    return name.includes('female') || name.includes('woman') || 
+           name.includes('samantha') || name.includes('karen') ||
+           name.includes('yuna') || name.includes('seoyeon');
+  });
+  if (femaleVoice) {
+    console.log(`✅ Found Female voice: ${femaleVoice.name}`);
+    return femaleVoice;
+  }
 
-  const bestVoice = scoredVoices[0]?.voice || matchingVoices[0];
-  console.log(`✅ Selected voice: "${bestVoice.name}" (lang: ${bestVoice.lang})`);
-  
-  return bestVoice;
+  // Priority 4: Remote/Online voice (usually better quality)
+  const remoteVoice = matchingVoices.find(v => !v.localService);
+  if (remoteVoice) {
+    console.log(`✅ Found Remote voice: ${remoteVoice.name}`);
+    return remoteVoice;
+  }
+
+  // Fallback: first matching voice
+  console.log(`⚠️ Using fallback voice: ${matchingVoices[0].name}`);
+  return matchingVoices[0];
 };
 
-/**
- * Check if running in development/localhost
- */
 const isLocalhost = (): boolean => {
   if (typeof window === 'undefined') return false;
   return window.location.hostname === 'localhost' || 
@@ -173,14 +152,10 @@ const isLocalhost = (): boolean => {
 };
 
 /**
- * Play word audio using hybrid approach with waterfall logic
- * Priority 1: Web Speech API (offline)
- * Priority 2: Google TTS (online fallback) - only if Web Speech API fails
- * 
- * Anti-Transformer settings:
- * - Pitch: 1.25 (higher = more natural, less robotic)
- * - Rate: 1.0 (normal speed)
- * - Voice: Female/Google/Natural preferred
+ * Play word audio - Mobile optimized
+ * - Prioritizes Google voices (most stable on mobile)
+ * - Locked pitch (1.1) and rate (1.0) 
+ * - Falls back to Google TTS API if Web Speech fails
  */
 export const playWordAudio = async (
   text: string,
@@ -191,159 +166,130 @@ export const playWordAudio = async (
   if (!cleanedText) return;
 
   const langCode = getLanguageCode(cleanedText);
-  
-  // Anti-Transformer Voice Settings
-  const PITCH = 1.25;  // Higher pitch = more natural, less robotic
-  const RATE = 1.0;    // Normal speed
 
-  // Reset speech synthesis before starting new audio
+  // Cancel any ongoing speech
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
   }
 
-  // Try Web Speech API first (offline) - Waterfall Logic
   let webSpeechSuccess = false;
-  
+
+  // Try Web Speech API first
   if ('speechSynthesis' in window) {
     try {
-      // Initialize voices with Chrome mobile fix
       const voices = await initVoices();
-      
-      // Find the best natural voice
-      const selectedVoice = findBestVoice(voices, langCode);
+      const selectedVoice = findGoogleVoice(voices, langCode);
 
-      if (selectedVoice || voices.length > 0) {
-        // Use Promise to track if speech actually started
-        const speechPromise = new Promise<boolean>((resolve) => {
-          const utterance = new SpeechSynthesisUtterance(cleanedText);
-          
-          if (selectedVoice) {
-            utterance.voice = selectedVoice;
-            console.log(`🔊 Speaking "${cleanedText}" with voice: ${selectedVoice.name}`);
-          } else {
-            console.log(`🔊 Speaking "${cleanedText}" with default voice`);
+      const speechPromise = new Promise<boolean>((resolve) => {
+        const utterance = new SpeechSynthesisUtterance(cleanedText);
+        
+        // Apply selected voice
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+        }
+        
+        // LOCKED SETTINGS - prevents system override
+        utterance.pitch = TTS_SETTINGS.PITCH;
+        utterance.rate = TTS_SETTINGS.RATE;
+        utterance.volume = TTS_SETTINGS.VOLUME;
+        utterance.lang = langCode;
+
+        console.log(`🔊 Speaking: "${cleanedText}"`);
+        console.log(`   Voice: ${selectedVoice?.name || 'default'}`);
+        console.log(`   Lang: ${langCode}, Pitch: ${TTS_SETTINGS.PITCH}, Rate: ${TTS_SETTINGS.RATE}`);
+
+        let hasStarted = false;
+        let isResolved = false;
+
+        const resolveOnce = (success: boolean) => {
+          if (!isResolved) {
+            isResolved = true;
+            resolve(success);
           }
-          
-          // Anti-Transformer settings
-          utterance.pitch = PITCH;
-          utterance.rate = RATE;
-          utterance.lang = langCode;
-          utterance.volume = 1;
+        };
 
-          let hasStarted = false;
-          let hasErrored = false;
-          let isResolved = false;
+        utterance.onstart = () => {
+          hasStarted = true;
+          console.log(`▶️ Speech started`);
+          if (onPlaying) onPlaying();
+          resolveOnce(true);
+        };
 
-          const resolveOnce = (success: boolean) => {
-            if (!isResolved) {
-              isResolved = true;
-              resolve(success);
-            }
-          };
+        utterance.onend = () => {
+          console.log(`⏹️ Speech ended`);
+          if (onEnded && hasStarted) onEnded();
+          if (!hasStarted) resolveOnce(false);
+        };
 
-          utterance.onstart = () => {
-            hasStarted = true;
-            console.log(`▶️ Speech started (pitch: ${PITCH}, rate: ${RATE})`);
-            if (onPlaying) onPlaying();
-            resolveOnce(true);
-          };
+        utterance.onerror = (e) => {
+          console.log(`❌ Speech error: ${e.error}`);
+          if (onEnded && hasStarted) onEnded();
+          resolveOnce(false);
+        };
 
-          utterance.onend = () => {
-            console.log(`⏹️ Speech ended`);
-            if (onEnded && hasStarted) onEnded();
-            if (!hasStarted && !hasErrored) {
-              resolveOnce(false);
-            }
-          };
+        window.speechSynthesis.speak(utterance);
 
-          utterance.onerror = (error) => {
-            hasErrored = true;
-            console.log(`❌ Speech error:`, error.error);
-            if (onEnded && hasStarted) onEnded();
+        // Timeout: if no start in 500ms, consider failed
+        setTimeout(() => {
+          if (!hasStarted && !isResolved) {
+            console.log(`⏰ Speech timeout`);
             resolveOnce(false);
-          };
+          }
+        }, 500);
+      });
 
-          window.speechSynthesis.speak(utterance);
-
-          // Timeout fallback: if speech doesn't start within 500ms, consider it failed
-          setTimeout(() => {
-            if (!hasStarted && !hasErrored && !isResolved) {
-              console.log(`⏰ Speech timeout - trying fallback`);
-              resolveOnce(false);
-            }
-          }, 500);
-        });
-
-        webSpeechSuccess = await speechPromise;
-      }
+      webSpeechSuccess = await speechPromise;
     } catch (error) {
-      console.log('Web Speech API error:', error);
+      console.log('Web Speech error:', error);
       webSpeechSuccess = false;
     }
   }
 
-  // Only try Google TTS if Web Speech API failed (Waterfall Logic)
+  // Fallback to Google TTS if Web Speech failed
   if (!webSpeechSuccess) {
-    // Check if speechSynthesis is actually speaking (avoid false errors)
     if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
       return;
     }
 
-    // Fallback to Google TTS (online)
     try {
-      console.log(`🌐 Trying Google TTS fallback for "${cleanedText}"`);
+      console.log(`🌐 Fallback to Google TTS`);
       if (onPlaying) onPlaying();
-      
-      // Google TTS uses short language codes
-      let googleLangCode = 'en';
-      if (langCode.startsWith('ko')) googleLangCode = 'ko';
-      else if (langCode.startsWith('id')) googleLangCode = 'id';
-      
-      const googleTTSUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanedText)}&tl=${googleLangCode}&client=tw-ob`;
-      
-      const audio = new Audio(googleTTSUrl);
-      audio.playbackRate = 1.0;
-      
-      if (onEnded) {
-        audio.onended = () => {
-          console.log(`🌐 Google TTS ended`);
-          onEnded();
-        };
-        audio.onerror = () => {
-          if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
-            return;
-          }
 
-          if (isLocalhost()) {
-            console.warn('Google TTS unavailable in localhost (CORS)');
-          } else {
-            console.error('Google TTS failed');
-          }
-          
-          if (onEnded) onEnded();
-        };
-      }
+      let googleLang = 'en';
+      if (langCode.startsWith('ko')) googleLang = 'ko';
+      else if (langCode.startsWith('id')) googleLang = 'id';
+
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanedText)}&tl=${googleLang}&client=tw-ob`;
+      
+      const audio = new Audio(url);
+      audio.playbackRate = TTS_SETTINGS.RATE; // Locked rate
+
+      audio.onended = () => {
+        console.log(`🌐 Google TTS ended`);
+        if (onEnded) onEnded();
+      };
+      
+      audio.onerror = () => {
+        if ('speechSynthesis' in window && window.speechSynthesis.speaking) return;
+        if (!isLocalhost()) console.error('Google TTS failed');
+        if (onEnded) onEnded();
+      };
 
       await audio.play();
-      console.log(`🌐 Google TTS playing`);
     } catch (error) {
-      if (isLocalhost()) {
-        console.warn('Google TTS unavailable in localhost (CORS)');
-      } else {
-        console.error('Audio playback failed:', error);
-      }
+      if (!isLocalhost()) console.error('TTS failed:', error);
       if (onEnded) onEnded();
     }
   }
 };
 
 /**
- * List all available voices (for debugging)
+ * Debug: List all available voices
  */
 export const listAvailableVoices = async (): Promise<void> => {
   const voices = await initVoices();
   console.log('🎙️ Available voices:');
   voices.forEach((v, i) => {
-    console.log(`  ${i + 1}. ${v.name} (${v.lang}) ${v.localService ? '[local]' : '[remote]'}`);
+    console.log(`  ${i + 1}. ${v.name} [${v.lang}] ${v.localService ? 'local' : 'remote'}`);
   });
 };

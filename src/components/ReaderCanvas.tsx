@@ -514,15 +514,18 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
       {/* Modal - z-[100] to be above BottomNavigation (z-50) */}
       {selectedWord && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 transition-opacity duration-300 p-4 pb-safe"
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black bg-opacity-50 transition-opacity duration-300"
           onClick={handleCloseModal}
         >
           <div
-            className="bg-white rounded-xl border border-[#E5E7EB] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-md w-full transform transition-all duration-300 scale-100 opacity-100 flex flex-col max-h-[85vh] mb-4"
+            className="bg-white rounded-t-2xl sm:rounded-xl border border-[#E5E7EB] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] w-full sm:max-w-md transform transition-all duration-300 scale-100 opacity-100 flex flex-col max-h-[90vh] sm:max-h-[85vh] sm:mx-4 sm:mb-4"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Drag Handle for Mobile */}
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mt-3 sm:hidden flex-shrink-0"></div>
+            
             {/* Header - Fixed at top */}
-            <div className="flex items-center justify-between p-5 border-b border-[#E5E7EB] flex-shrink-0">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-[#E5E7EB] flex-shrink-0">
               <h2 className="text-2xl font-bold text-[#1F2937] app-title">{t('wordDetails', appLanguage)}</h2>
               <button
                 onClick={handleCloseModal}
@@ -534,7 +537,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
             </div>
 
             {/* Content - Scrollable */}
-            <div className="p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain -webkit-overflow-scrolling-touch">
               {isLoading ? (
                 <div className="flex flex-col items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FFB800] mb-3"></div>
@@ -682,9 +685,9 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
               )}
             </div>
 
-            {/* Footer - Fixed at bottom with higher z-index for buttons */}
+            {/* Footer - Sticky at bottom with safe area padding for mobile */}
             {!isLoading && (
-              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-100 flex-shrink-0 bg-white rounded-b-xl relative z-10">
+              <div className="flex items-center justify-end gap-3 p-4 pb-6 sm:pb-4 border-t border-gray-100 flex-shrink-0 bg-white rounded-b-xl relative z-10 sticky bottom-0" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
                 <button
                   onClick={handleSaveWord}
                   disabled={isSaved || isSaving}
