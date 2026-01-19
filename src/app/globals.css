@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+:root {
+  /* Color Palette */
+  --primary-color: #FFB800;
+  --primary-hover: #E6A600;
+  --background-color: #F8F9FA;
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --border-color: #E5E7EB;
+  
+  /* Accent Colors (Pastel) */
+  --accent-blue: #DBEAFE;
+  --accent-green: #D1FAE5;
+  --accent-purple: #E9D5FF;
+  --accent-pink: #FCE7F3;
+  --accent-yellow: #FEF3C7;
+  
+  /* Card Styling */
+  --card-radius: 12px;
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --card-border: 1px solid #E5E7EB;
+  
+  /* Typography */
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+body {
+  background-color: var(--background-color);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Card Base Style */
+.card {
+  background: white;
+  border: var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  transition: all 0.2s ease-in-out;
+}
+
+.card:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+/* Button Base Style */
+.btn-primary {
+  background-color: var(--primary-color);
+  color: white;
+  border-radius: var(--card-radius);
+  transition: all 0.2s ease-in-out;
+  box-shadow: var(--card-shadow);
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+  transform: scale(0.98);
+  box-shadow: 0 6px 8px -1px rgba(0, 0, 0, 0.12), 0 3px 5px -1px rgba(0, 0, 0, 0.08);
+}
+
+.btn-primary:active {
+  transform: scale(0.96);
+}
+
+/* Serif Font for App Title */
+.app-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+}
