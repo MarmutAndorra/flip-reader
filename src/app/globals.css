@@ -72,3 +72,24 @@ body {
   font-family: var(--font-serif);
   font-weight: 700;
 }
+
+/* Safe Area Utilities for iOS devices with notches */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Ensure modal overlay covers safe areas */
+.modal-overlay {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+}
+
+/* Prevent body scroll when modal is open */
+body.modal-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+}

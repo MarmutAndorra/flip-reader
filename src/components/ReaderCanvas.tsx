@@ -511,18 +511,18 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Modal - z-[100] to be above BottomNavigation (z-50) */}
       {selectedWord && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 transition-opacity duration-300 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 transition-opacity duration-300 p-4 pb-safe"
           onClick={handleCloseModal}
         >
           <div
-            className="bg-white rounded-xl border border-[#E5E7EB] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-md w-full transform transition-all duration-300 scale-100 opacity-100 flex flex-col max-h-[90vh]"
+            className="bg-white rounded-xl border border-[#E5E7EB] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-md w-full transform transition-all duration-300 scale-100 opacity-100 flex flex-col max-h-[85vh] mb-4"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header - Fixed at top */}
-            <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB] flex-shrink-0">
+            <div className="flex items-center justify-between p-5 border-b border-[#E5E7EB] flex-shrink-0">
               <h2 className="text-2xl font-bold text-[#1F2937] app-title">{t('wordDetails', appLanguage)}</h2>
               <button
                 onClick={handleCloseModal}
@@ -534,7 +534,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
             </div>
 
             {/* Content - Scrollable */}
-            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+            <div className="p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain">
               {isLoading ? (
                 <div className="flex flex-col items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FFB800] mb-3"></div>
@@ -682,9 +682,9 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
               )}
             </div>
 
-            {/* Footer - Fixed at bottom */}
+            {/* Footer - Fixed at bottom with higher z-index for buttons */}
             {!isLoading && (
-              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0 bg-white rounded-b-xl">
+              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-100 flex-shrink-0 bg-white rounded-b-xl relative z-10">
                 <button
                   onClick={handleSaveWord}
                   disabled={isSaved || isSaving}
