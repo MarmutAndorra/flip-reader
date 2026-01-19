@@ -1096,6 +1096,138 @@ export default function Home() {
     { bg: 'bg-indigo-500', badge: 'bg-indigo-600', border: 'border-indigo-600' },
   ];
 
+  // =============================================
+  // AUTH GUARD: Show Welcome Screen if not logged in
+  // =============================================
+  if (!authLoading && !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#FEF3C7] via-[#FDE68A] to-[#F59E0B] flex flex-col">
+        {/* Header */}
+        <nav className="bg-white/90 backdrop-blur-sm border-b border-[#E5E7EB] shadow-sm">
+          <div className="max-w-md mx-auto px-4">
+            <div className="flex items-center justify-between h-14">
+              <h1 className="text-lg font-bold text-[#1F2937] font-serif">Flip Reader 🧠</h1>
+              <button
+                onClick={() => router.push('/login')}
+                className="px-4 py-2 text-sm font-medium text-[#1F2937] hover:text-[#FFB800] transition-colors"
+              >
+                {appLanguage === 'Bahasa Indonesia' ? 'Masuk' : 'Login'}
+              </button>
+            </div>
+          </div>
+        </nav>
+
+        {/* Welcome Content */}
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="text-center max-w-md"
+          >
+            {/* Logo/Icon */}
+            <div className="mb-8">
+              <span className="text-8xl">📖</span>
+            </div>
+
+            {/* Title */}
+            <h1 className="text-4xl font-bold text-[#1F2937] mb-4 font-serif">
+              Flip Reader
+            </h1>
+
+            {/* Subtitle */}
+            <p className="text-lg text-[#4B5563] mb-8 font-serif">
+              {appLanguage === 'Bahasa Indonesia'
+                ? 'Belajar kosakata Korea dengan cara yang menyenangkan dan efektif'
+                : 'Learn Korean vocabulary in a fun and effective way'}
+            </p>
+
+            {/* Features */}
+            <div className="grid grid-cols-1 gap-4 mb-10 text-left">
+              <div className="flex items-start gap-3 bg-white/80 rounded-xl p-4 shadow-sm">
+                <span className="text-2xl">📚</span>
+                <div>
+                  <h3 className="font-semibold text-[#1F2937] font-serif">
+                    {appLanguage === 'Bahasa Indonesia' ? 'Baca & Simpan' : 'Read & Save'}
+                  </h3>
+                  <p className="text-sm text-[#6B7280]">
+                    {appLanguage === 'Bahasa Indonesia'
+                      ? 'Klik kata untuk melihat arti dan simpan ke Word Bank'
+                      : 'Click words to see meaning and save to Word Bank'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 bg-white/80 rounded-xl p-4 shadow-sm">
+                <span className="text-2xl">🎴</span>
+                <div>
+                  <h3 className="font-semibold text-[#1F2937] font-serif">
+                    {appLanguage === 'Bahasa Indonesia' ? 'Flashcard Cerdas' : 'Smart Flashcards'}
+                  </h3>
+                  <p className="text-sm text-[#6B7280]">
+                    {appLanguage === 'Bahasa Indonesia'
+                      ? 'Sistem pengulangan berjarak untuk hafalan yang lebih awet'
+                      : 'Spaced repetition system for lasting memorization'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 bg-white/80 rounded-xl p-4 shadow-sm">
+                <span className="text-2xl">☁️</span>
+                <div>
+                  <h3 className="font-semibold text-[#1F2937] font-serif">
+                    {appLanguage === 'Bahasa Indonesia' ? 'Sinkron Cloud' : 'Cloud Sync'}
+                  </h3>
+                  <p className="text-sm text-[#6B7280]">
+                    {appLanguage === 'Bahasa Indonesia'
+                      ? 'Data tersimpan aman dan bisa diakses dari mana saja'
+                      : 'Data saved securely and accessible from anywhere'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* CTA Buttons */}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => router.push('/register')}
+                className="w-full px-6 py-4 bg-[#1F2937] text-white rounded-xl font-semibold text-lg shadow-lg hover:bg-[#374151] transition-all duration-200 active:scale-95"
+              >
+                {appLanguage === 'Bahasa Indonesia' ? 'Daftar Gratis' : 'Sign Up Free'}
+              </button>
+              <button
+                onClick={() => router.push('/login')}
+                className="w-full px-6 py-4 bg-white text-[#1F2937] rounded-xl font-semibold text-lg shadow-md border border-[#E5E7EB] hover:bg-[#F9FAFB] transition-all duration-200 active:scale-95"
+              >
+                {appLanguage === 'Bahasa Indonesia' ? 'Sudah Punya Akun? Masuk' : 'Already have an account? Login'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center py-4 text-sm text-[#6B7280]">
+          <p>Made with ❤️ for Korean learners</p>
+        </div>
+      </div>
+    );
+  }
+
+  // =============================================
+  // LOADING STATE
+  // =============================================
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FFB800] mx-auto mb-4"></div>
+          <p className="text-[#6B7280] font-serif">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // =============================================
+  // MAIN APP (Authenticated Users Only)
+  // =============================================
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#1F2937] pb-24">
       {/* Top Bar */}
