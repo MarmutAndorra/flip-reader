@@ -514,15 +514,15 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
       {/* Modal */}
       {selectedWord && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 transition-opacity duration-300"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 transition-opacity duration-300 p-4"
           onClick={handleCloseModal}
         >
           <div
-            className="bg-white rounded-xl border border-[#E5E7EB] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-md w-full mx-4 transform transition-all duration-300 scale-100 opacity-100"
+            className="bg-white rounded-xl border border-[#E5E7EB] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] max-w-md w-full transform transition-all duration-300 scale-100 opacity-100 flex flex-col max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB]">
+            {/* Header - Fixed at top */}
+            <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB] flex-shrink-0">
               <h2 className="text-2xl font-bold text-[#1F2937] app-title">{t('wordDetails', appLanguage)}</h2>
               <button
                 onClick={handleCloseModal}
@@ -533,8 +533,8 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
               </button>
             </div>
 
-            {/* Content */}
-            <div className="p-6 space-y-4">
+            {/* Content - Scrollable */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
               {isLoading ? (
                 <div className="flex flex-col items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FFB800] mb-3"></div>
@@ -682,9 +682,9 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
               )}
             </div>
 
-            {/* Footer */}
+            {/* Footer - Fixed at bottom */}
             {!isLoading && (
-              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-100">
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0 bg-white rounded-b-xl">
                 <button
                   onClick={handleSaveWord}
                   disabled={isSaved || isSaving}
