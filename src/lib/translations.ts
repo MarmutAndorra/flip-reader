@@ -6,7 +6,7 @@ export const translations = {
     reader: 'Reader',
     myWordBank: 'Kumpulan Kata',
     settings: 'Pengaturan',
-    
+
     // Home
     welcome: 'Selamat Datang',
     greeting: 'Halo, Selamat Belajar!',
@@ -20,24 +20,24 @@ export const translations = {
     noWordsYet: 'Belum ada kata',
     defaultWord: '공부하다',
     defaultWordMeaning: 'Belajar',
-    
+
     // Search
     searchPlaceholder: 'Cari kata atau arti...',
-    
+
     // Word Bank
     wordBankTitle: 'Kumpulan Kata',
     totalWords: 'Total kata',
     wordsInFolder: 'Kata di folder ini',
     results: 'Hasil',
     fromTotal: 'Dari',
-    
+
     // Actions
     select: 'Pilih',
     cancel: 'Batal',
     clear: 'Bersihkan Teks',
     changeText: 'Ganti Teks',
     delete: 'Hapus',
-    
+
     // Selection Mode
     selectedWords: 'Kata Terpilih',
     moveToSet: 'Pindahkan ke...',
@@ -50,25 +50,25 @@ export const translations = {
     wordsToFolder: 'kata ke folder',
     folderNameRequired: 'Nama folder harus diisi',
     folderExists: 'Folder dengan nama ini sudah ada',
-    
+
     // Word Details
     wordType: 'Jenis Kata',
     grammarNote: 'Catatan Tata Bahasa',
     example: 'Contoh Kalimat',
     originalSentence: 'Kalimat Asli',
     savedAt: 'Disimpan',
-    
+
     // Folder
     vocabularySets: 'Kumpulan Kosakata',
     uncategorized: 'Tidak Terkategori',
-    
+
     // Empty States
     emptyWordBank: 'Kumpulan Kata masih kosong',
     emptyFolder: 'Belum ada kata di set ini',
     emptySearch: 'Tidak ada kata yang cocok dengan pencarian',
     emptySearchHint: 'Coba kata kunci lain',
     addWordsHint: 'Yuk tambahkan kata saat membaca!',
-    
+
     // Reader
     enterText: 'Masukkan teks yang ingin dibaca...',
     targetLanguage: 'Bahasa Tujuan',
@@ -89,7 +89,7 @@ export const translations = {
     alreadyInBank: 'sudah ada di Word Bank!',
     saveFailed: 'Gagal menyimpan kata. Silakan coba lagi.',
     loadFailed: 'Gagal memuat arti kata. Silakan coba lagi.',
-    
+
     // Part of Speech translations
     partOfSpeech: {
       'Noun': 'Kata Benda',
@@ -109,7 +109,7 @@ export const translations = {
     reader: 'Reader',
     myWordBank: 'My Word Bank',
     settings: 'Settings',
-    
+
     // Home
     welcome: 'Welcome',
     greeting: 'Hello, Happy Learning!',
@@ -123,24 +123,24 @@ export const translations = {
     noWordsYet: 'No words yet',
     defaultWord: '공부하다',
     defaultWordMeaning: 'To Study',
-    
+
     // Search
     searchPlaceholder: 'Search words or meanings...',
-    
+
     // Word Bank
     wordBankTitle: 'My Word Bank',
     totalWords: 'Total words',
     wordsInFolder: 'Words in this folder',
     results: 'Results',
     fromTotal: 'From',
-    
+
     // Actions
     select: 'Select',
     cancel: 'Cancel',
     clear: 'Clear Text',
     changeText: 'Change Text',
     delete: 'Delete',
-    
+
     // Selection Mode
     selectedWords: 'Words Selected',
     moveToSet: 'Move to...',
@@ -153,25 +153,25 @@ export const translations = {
     wordsToFolder: 'words to folder',
     folderNameRequired: 'Folder name is required',
     folderExists: 'A folder with this name already exists',
-    
+
     // Word Details
     wordType: 'Part of Speech',
     grammarNote: 'Grammar Note',
     example: 'Example Sentence',
     originalSentence: 'Original Sentence',
     savedAt: 'Saved',
-    
+
     // Folder
     vocabularySets: 'Vocabulary Sets',
     uncategorized: 'Uncategorized',
-    
+
     // Empty States
     emptyWordBank: 'Word Bank is empty',
     emptyFolder: 'No words in this set yet',
     emptySearch: 'No words match your search',
     emptySearchHint: 'Try different keywords',
     addWordsHint: 'Add words while reading!',
-    
+
     // Reader
     enterText: 'Enter the text you want to read...',
     targetLanguage: 'Target Language',
@@ -192,7 +192,7 @@ export const translations = {
     alreadyInBank: 'already exists in Word Bank!',
     saveFailed: 'Failed to save word. Please try again.',
     loadFailed: 'Failed to load word meaning. Please try again.',
-    
+
     // Part of Speech translations (keep as is for English)
     partOfSpeech: {
       'Noun': 'Noun',
@@ -213,25 +213,25 @@ export const t = (key: string, lang: string = 'Bahasa Indonesia'): string => {
   const langKey = lang === 'Bahasa Indonesia' ? 'Bahasa Indonesia' : 'English';
   const keys = key.split('.');
   let value: any = translations[langKey as keyof typeof translations];
-  
+
   for (const k of keys) {
     value = value?.[k];
     if (!value) return key;
   }
-  
+
   return typeof value === 'string' ? value : key;
 };
 
 // Helper function to translate part of speech
 export const translatePartOfSpeech = (pos: string, lang: string): string => {
   if (lang !== 'Bahasa Indonesia') return pos;
-  
+
   const posMap = translations['Bahasa Indonesia'].partOfSpeech;
   // Try exact match first
   if (posMap[pos as keyof typeof posMap]) {
     return posMap[pos as keyof typeof posMap];
   }
-  
+
   // Try case-insensitive match
   const lowerPos = pos.toLowerCase();
   for (const [english, indonesian] of Object.entries(posMap)) {
@@ -239,12 +239,32 @@ export const translatePartOfSpeech = (pos: string, lang: string): string => {
       return indonesian;
     }
   }
-  
+
   // If not found, try to translate common patterns
   if (lowerPos.includes('noun')) return 'Kata Benda';
   if (lowerPos.includes('verb')) return 'Kata Kerja';
   if (lowerPos.includes('adjective')) return 'Kata Sifat';
   if (lowerPos.includes('adverb')) return 'Kata Keterangan';
-  
+
   return pos; // Return original if can't translate
+};
+// Helper for language normalization
+export const normalizeLanguage = (lang: string | undefined): string => {
+  if (!lang || lang === 'Auto-Detect' || lang === 'Unknown') return 'Korean';
+  const l = lang.toLowerCase().trim();
+  if (l === 'jepang' || l === 'japanese' || l === 'jp' || l.includes('jp')) return 'Japanese';
+  if (l === 'korea' || l === 'korean' || l === 'ko' || l.includes('kr')) return 'Korean';
+  if (l === 'inggris' || l === 'english' || l === 'en' || l.includes('gb') || l.includes('us')) return 'English';
+  if (l === 'mandarin' || l === 'chinese' || l === 'zh' || l === 'china' || l.includes('cn')) return 'Chinese';
+  if (l === 'spanyol' || l === 'spanish' || l === 'es') return 'Spanish';
+  if (l === 'perancis' || l === 'french' || l === 'fr') return 'French';
+  if (l === 'jerman' || l === 'german' || l === 'de') return 'German';
+  if (l === 'indonesia' || l === 'indonesian' || l === 'id') return 'Indonesian';
+  if (l === 'italia' || l === 'italian' || l === 'it') return 'Italian';
+  if (l === 'rusia' || l === 'russian' || l === 'ru') return 'Russian';
+  if (l === 'arab' || l === 'arabic' || l === 'ar') return 'Arabic';
+  if (l === 'portugis' || l === 'portuguese' || l === 'pt') return 'Portuguese';
+  if (l === 'vietnam' || l === 'vietnamese' || l === 'vi') return 'Vietnamese';
+  if (l === 'thai' || l === 'thailand' || l === 'th') return 'Thai';
+  return lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
 };

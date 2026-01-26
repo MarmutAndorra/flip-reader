@@ -8,7 +8,7 @@ import SwipeCard from '@/components/SwipeCard';
 // Migration system disabled - all data goes to Supabase only
 // import MigrationModal from '@/components/MigrationModal';
 import { motion, AnimatePresence } from 'framer-motion';
-import { t, translatePartOfSpeech } from '@/lib/translations';
+import { t, translatePartOfSpeech, normalizeLanguage } from '@/lib/translations';
 import { playWordAudio } from '@/lib/audioUtils';
 import { exportToCSV, downloadCSV, importFromCSVWithMapping, getCSVHeaders, FieldMapping, stripHTML } from '@/lib/csvUtils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +17,7 @@ import * as wordBankService from '@/lib/wordBankService';
 interface WordItem {
   term: string;
   definition: string;
+  sourceLanguage?: string; // New: Language of the term (e.g. 'Korean', 'English')
   partOfSpeech: string;
   grammarNote?: string;
   example?: string;
@@ -39,26 +40,26 @@ interface VocabSet {
 export default function Home() {
   const router = useRouter();
   const { user, loading: authLoading, signOut } = useAuth();
-  
+
   // Hydration-safe mounting state
   const [isMounted, setIsMounted] = useState(false);
-  
+
   // Loading states
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Migration system disabled - Supabase is the only data source
   // const [showMigrationModal, setShowMigrationModal] = useState(false);
   // const hasMigrationBeenChecked = useRef(false);
-  
+
   // Tab management
   const [activeTab, setActiveTab] = useState<'home' | 'reader' | 'wordBank'>('home');
-  
+
   // Settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [appLanguage, setAppLanguage] = useState<string>('Bahasa Indonesia');
   const [targetLanguage, setTargetLanguage] = useState<string>('Indonesian');
-  
+
   // Word Bank
   const [words, setWords] = useState<WordItem[]>([]);
   const [vocabSets, setVocabSets] = useState<VocabSet[]>([]);
@@ -66,15 +67,16 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [memorizationFilter, setMemorizationFilter] = useState<'all' | 'not-mastered' | 'mastered' | 'due-review'>('all');
+  const [wordBankLanguageFilter, setWordBankLanguageFilter] = useState<string>('all'); // New filter state
   const [sortBy, setSortBy] = useState<'newest' | 'alphabetical' | 'status'>('newest');
-  
+
   // Selection mode
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedWords, setSelectedWords] = useState<Set<string>>(new Set());
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [moveNotification, setMoveNotification] = useState<string | null>(null);
-  
+
   // Flashcard Mode
   const [isSwipeMode, setIsSwipeMode] = useState(false);
   const [swipeWords, setSwipeWords] = useState<WordItem[]>([]);
@@ -86,23 +88,23 @@ export default function Home() {
   const [isSessionComplete, setIsSessionComplete] = useState(false);
   const [dailyStatsVersion, setDailyStatsVersion] = useState(0); // Untuk memicu re-render grafik
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null); // Track which word is playing audio
-  
+
   // Hydration-safe states for client-only data
   const [last7DaysData, setLast7DaysData] = useState<{ date: string; count: number }[]>([]);
   const [wordOfTheDay, setWordOfTheDay] = useState<WordItem | null>(null);
   const [formattedDate, setFormattedDate] = useState<string>('');
   const [dueReviewCount, setDueReviewCount] = useState<number>(0);
-  
+
   // Scroll visibility
   const [isSettingsVisible, setIsSettingsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
   // File input ref for CSV import
   const csvFileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Ref to hold latest loadDailyStats to avoid circular dependency in saveDailyActivity
   const loadDailyStatsRef = useRef<(() => Promise<void>) | null>(null);
-  
+
   // CSV Import Modal State
   const [isCSVMappingModalOpen, setIsCSVMappingModalOpen] = useState(false);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
@@ -131,9 +133,9 @@ export default function Home() {
   // NOTE: Migration check is handled separately in useEffect (runs only once)
   const loadDataFromSupabase = useCallback(async () => {
     if (!user) return;
-    
+
     setIsDataLoading(true);
-    
+
     // 1. Load words (independent operation)
     try {
       const fetchedWords = await wordBankService.fetchWords(user.id);
@@ -142,7 +144,7 @@ export default function Home() {
       // Silent fail - words will stay as empty array
       setWords([]);
     }
-    
+
     // 2. Load vocab sets (independent operation)
     try {
       const fetchedSets = await wordBankService.fetchVocabSets(user.id);
@@ -159,7 +161,7 @@ export default function Home() {
       const defaultSet: VocabSet = { id: 'uncategorized', name: 'Tidak Terkategori' };
       setVocabSets([defaultSet]);
     }
-    
+
     // 3. Load user settings (independent operation)
     try {
       const settings = await wordBankService.getUserSettings(user.id);
@@ -171,7 +173,7 @@ export default function Home() {
     } catch {
       // Silent fail - keep using localStorage values
     }
-    
+
     setIsDataLoading(false);
   }, [user]);
 
@@ -195,12 +197,12 @@ export default function Home() {
       setLast7DaysData(getDefaultData());
       return;
     }
-    
+
     try {
       console.log('[loadDailyStats] Fetching from Supabase for user:', user.id);
       const dailyStats = await wordBankService.getDailyStats(user.id);
       console.log('[loadDailyStats] Got stats:', dailyStats);
-      
+
       const today = new Date();
       const data = Array.from({ length: 7 }, (_, i) => {
         const date = new Date(today);
@@ -214,7 +216,7 @@ export default function Home() {
           count: count
         };
       });
-      
+
       console.log('[loadDailyStats] Setting data:', data);
       setLast7DaysData(data);
     } catch (err) {
@@ -222,7 +224,7 @@ export default function Home() {
       setLast7DaysData(getDefaultData());
     }
   }, [user]);
-  
+
   // Update ref whenever loadDailyStats changes
   loadDailyStatsRef.current = loadDailyStats;
 
@@ -238,18 +240,18 @@ export default function Home() {
     localStorage.removeItem('vocabSets');
     localStorage.removeItem('daily-stats');
     localStorage.removeItem('dailyStats');
-    
+
     // Load UI preferences from localStorage (only language settings stay local)
     const savedAppLanguage = localStorage.getItem('app-language');
     if (savedAppLanguage) {
       setAppLanguage(savedAppLanguage);
     }
-    
+
     const savedTargetLanguage = localStorage.getItem('preferred-target-language');
     if (savedTargetLanguage) {
       setTargetLanguage(savedTargetLanguage);
     }
-    
+
     // Mark as mounted for hydration-safe rendering
     setIsMounted(true);
   }, []);
@@ -289,7 +291,7 @@ export default function Home() {
   // Initialize client-only data after mounting (to avoid hydration mismatch)
   useEffect(() => {
     if (!isMounted) return;
-    
+
     // Format date
     const today = new Date();
     const koreanDate = today.toLocaleDateString('ko-KR', {
@@ -305,7 +307,7 @@ export default function Home() {
       weekday: 'long',
     });
     setFormattedDate(`${indonesianDate} | ${koreanDate}`);
-    
+
     // Load daily stats - SUPABASE ONLY
     // If user is logged in, loadDailyStats will fetch from Supabase
     // If not logged in, loadDailyStats will set default empty data
@@ -315,7 +317,7 @@ export default function Home() {
   // Update word of the day when words change (client-side only)
   useEffect(() => {
     if (!isMounted) return;
-    
+
     if (words.length === 0) {
       setWordOfTheDay({
         term: '공부하다',
@@ -335,7 +337,7 @@ export default function Home() {
   // Update due review count (client-side only)
   useEffect(() => {
     if (!isMounted) return;
-    
+
     const today = new Date().toISOString().split('T')[0];
     const count = words.filter((word) => {
       if (!word.nextReview) return true;
@@ -347,10 +349,10 @@ export default function Home() {
   // Save app language
   useEffect(() => {
     localStorage.setItem('app-language', appLanguage);
-    window.dispatchEvent(new CustomEvent('appLanguageChanged', { 
-      detail: { language: appLanguage } 
+    window.dispatchEvent(new CustomEvent('appLanguageChanged', {
+      detail: { language: appLanguage }
     }));
-    
+
     // Also save to Supabase if logged in
     if (user && isMounted) {
       wordBankService.saveUserSettings(user.id, { appLanguage }).catch(console.error);
@@ -360,12 +362,12 @@ export default function Home() {
   // Save target language to localStorage and Supabase
   useEffect(() => {
     localStorage.setItem('preferred-target-language', targetLanguage);
-    
+
     // Dispatch event for other components (e.g., ReaderCanvas)
-    window.dispatchEvent(new CustomEvent('targetLanguageChanged', { 
-      detail: { language: targetLanguage } 
+    window.dispatchEvent(new CustomEvent('targetLanguageChanged', {
+      detail: { language: targetLanguage }
     }));
-    
+
     // Also save to Supabase if logged in
     if (user && isMounted) {
       wordBankService.saveUserSettings(user.id, { targetLanguage }).catch(console.error);
@@ -376,13 +378,13 @@ export default function Home() {
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
-      
+
       if (currentScrollY < lastScrollY || currentScrollY < 10) {
         setIsSettingsVisible(true);
       } else if (currentScrollY > lastScrollY && currentScrollY > 100) {
         setIsSettingsVisible(false);
       }
-      
+
       setLastScrollY(currentScrollY);
     };
 
@@ -404,27 +406,27 @@ export default function Home() {
   useEffect(() => {
     if (isSwipeMode && words.length > 0) {
       let wordsToSwipe = [...words];
-      
+
       // Filter by favorites if enabled
       if (onlyFavorites) {
         wordsToSwipe = wordsToSwipe.filter(w => w.isFavorite);
       }
-      
+
       // Filter by selected folder if any
       if (selectedSetId) {
         wordsToSwipe = wordsToSwipe.filter(w => w.setId === selectedSetId);
       }
-      
+
       // Filter kata yang waktunya ditinjau (nextReview <= hari ini atau null)
       const today = new Date().toISOString().split('T')[0];
       const dueWords = wordsToSwipe.filter((word) => {
         if (!word.nextReview) return true; // Kata baru tanpa nextReview
         return word.nextReview <= today;
       });
-      
+
       // Jika ada kata yang due, prioritaskan mereka. Jika tidak, gunakan semua kata
       const wordsToUse = dueWords.length > 0 ? dueWords : wordsToSwipe;
-      
+
       // Shuffle array
       const shuffled = wordsToUse.sort(() => Math.random() - 0.5);
       setSwipeWords(shuffled);
@@ -451,14 +453,14 @@ export default function Home() {
       console.log('[saveDailyActivity] No user, skipping');
       return;
     }
-    
+
     console.log('[saveDailyActivity] Called with count:', count, 'for user:', user.id);
-    
+
     try {
       // Save to Supabase ONLY
       const success = await wordBankService.incrementDailyStats(user.id, count);
       console.log('[saveDailyActivity] incrementDailyStats result:', success);
-      
+
       if (success && loadDailyStatsRef.current) {
         // Reload daily stats to reflect the update immediately
         console.log('[saveDailyActivity] Reloading daily stats...');
@@ -483,14 +485,14 @@ export default function Home() {
       // Swipe kanan: naik level
       const newInterval = Math.min(currentInterval + 1, 3); // Max level 3
       let daysToAdd = 1;
-      
+
       if (newInterval === 1) daysToAdd = 1;   // Level 1: 1 hari
       else if (newInterval === 2) daysToAdd = 3;  // Level 2: 3 hari
       else if (newInterval === 3) daysToAdd = 7;  // Level 3: 7 hari
-      
+
       const nextDate = new Date();
       nextDate.setDate(nextDate.getDate() + daysToAdd);
-      
+
       return {
         interval: newInterval,
         nextReview: nextDate.toISOString().split('T')[0]
@@ -527,7 +529,7 @@ export default function Home() {
     } else {
       setPerluDiulang(prev => [...prev, wordId]);
     }
-    
+
     // TIDAK panggil saveDailyActivity di sini - akan dipanggil saat sesi selesai
 
     // Update currentIndex - INCREMENT MANUAL
@@ -543,11 +545,11 @@ export default function Home() {
   // Fungsi untuk highlight teks yang cocok dengan query
   const highlightText = (text: string, query: string) => {
     if (!query.trim()) return text;
-    
+
     const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
     const parts = text.split(regex);
-    
-    return parts.map((part, index) => 
+
+    return parts.map((part, index) =>
       regex.test(part) ? (
         <mark key={index} className="bg-yellow-200 text-[#1F2937] px-0.5 rounded">
           {part}
@@ -580,13 +582,13 @@ export default function Home() {
 
     // Filter berdasarkan status hafalan
     if (memorizationFilter === 'mastered') {
-      filtered = filtered.filter((word) => 
+      filtered = filtered.filter((word) =>
         word.memorizationStatus === 'mastered' || word.memorizationStatus === 'well-known'
       );
     } else if (memorizationFilter === 'not-mastered') {
-      filtered = filtered.filter((word) => 
-        !word.memorizationStatus || 
-        word.memorizationStatus === 'unknown' || 
+      filtered = filtered.filter((word) =>
+        !word.memorizationStatus ||
+        word.memorizationStatus === 'unknown' ||
         word.memorizationStatus === 'learning' ||
         word.memorizationStatus === 'known'
       );
@@ -599,9 +601,16 @@ export default function Home() {
       });
     }
 
+    // Filter berdasarkan Bahasa Sumber (Polyglot)
+    if (wordBankLanguageFilter !== 'all') {
+      filtered = filtered.filter((word) =>
+        normalizeLanguage(word.sourceLanguage) === wordBankLanguageFilter
+      );
+    }
+
     // Sorting
     if (sortBy === 'newest') {
-      filtered = [...filtered].sort((a, b) => 
+      filtered = [...filtered].sort((a, b) =>
         new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
       );
     } else if (sortBy === 'alphabetical') {
@@ -611,7 +620,7 @@ export default function Home() {
       filtered = [...filtered].sort((a, b) => {
         const aIsMastered = a.memorizationStatus === 'mastered' || a.memorizationStatus === 'well-known';
         const bIsMastered = b.memorizationStatus === 'mastered' || b.memorizationStatus === 'well-known';
-        
+
         if (aIsMastered && !bIsMastered) return 1;
         if (!aIsMastered && bIsMastered) return -1;
         return 0;
@@ -619,7 +628,7 @@ export default function Home() {
     }
 
     return filtered;
-  }, [words, selectedSetId, searchQuery, memorizationFilter, sortBy]);
+  }, [words, selectedSetId, searchQuery, memorizationFilter, wordBankLanguageFilter, sortBy]);
 
   // Toggle expand/collapse
   const toggleExpand = (term: string) => {
@@ -650,18 +659,18 @@ export default function Home() {
       setIsCreateFolderModalOpen(true);
       return;
     }
-    
+
     if (!user) return; // Must be logged in
-    
+
     setIsSaving(true);
     try {
       const movedCount = selectedWords.size;
       const folderName = vocabSets.find(s => s.id === setId)?.name || setId;
       const termsToMove = Array.from(selectedWords);
-      
+
       // Move in Supabase ONLY
       await wordBankService.moveWordsToSet(user.id, termsToMove, setId);
-      
+
       // Update local state
       const updatedWords = words.map((word) =>
         selectedWords.has(word.term) ? { ...word, setId } : word
@@ -669,7 +678,7 @@ export default function Home() {
       setWords(updatedWords);
       setSelectedWords(new Set());
       setIsSelectionMode(false);
-      
+
       // Show success notification
       const message = appLanguage === 'Bahasa Indonesia'
         ? `Berhasil memindahkan ${movedCount} kata ke folder "${folderName}"`
@@ -686,32 +695,32 @@ export default function Home() {
   // Create new folder and move selected words to it
   const handleCreateFolderAndMove = async () => {
     const trimmedName = newFolderName.trim();
-    
+
     if (!trimmedName) {
       alert(t('folderNameRequired', appLanguage));
       return;
     }
-    
+
     // Check if folder name already exists
     if (vocabSets.some(s => s.name.toLowerCase() === trimmedName.toLowerCase())) {
       alert(t('folderExists', appLanguage));
       return;
     }
-    
+
     if (!user) return; // Must be logged in
-    
+
     setIsSaving(true);
     try {
       // Create new folder
       const newFolderId = `folder-${Date.now()}`;
       const newFolder: VocabSet = { id: newFolderId, name: trimmedName };
-      
+
       // Create in Supabase ONLY
       await wordBankService.createVocabSet(user.id, newFolderId, trimmedName);
       // Move words in Supabase
       const termsToMove = Array.from(selectedWords);
       await wordBankService.moveWordsToSet(user.id, termsToMove, newFolderId);
-      
+
       // Update local state
       const updatedSets = [...vocabSets, newFolder];
       setVocabSets(updatedSets);
@@ -720,13 +729,13 @@ export default function Home() {
         selectedWords.has(word.term) ? { ...word, setId: newFolderId } : word
       );
       setWords(updatedWords);
-      
+
       // Reset states
       setSelectedWords(new Set());
       setIsSelectionMode(false);
       setIsCreateFolderModalOpen(false);
       setNewFolderName('');
-      
+
       // Show success notification
       const message = appLanguage === 'Bahasa Indonesia'
         ? `Berhasil memindahkan ${movedCount} kata ke folder "${trimmedName}"`
@@ -744,13 +753,13 @@ export default function Home() {
   const handleDeleteWord = async (term: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user) return; // Must be logged in
-    
+
     if (confirm(`Apakah Anda yakin ingin menghapus "${term}"?`)) {
       setIsSaving(true);
       try {
         // Delete from Supabase ONLY
         await wordBankService.deleteWord(user.id, term);
-        
+
         const updatedWords = words.filter((word) => word.term !== term);
         setWords(updatedWords);
         if (expandedId === term) {
@@ -767,15 +776,15 @@ export default function Home() {
   // Delete selected words - SUPABASE ONLY
   const handleDeleteSelected = async () => {
     if (!user || selectedWords.size === 0) return;
-    
+
     if (confirm(`Apakah Anda yakin ingin menghapus ${selectedWords.size} kata?`)) {
       setIsSaving(true);
       try {
         const termsToDelete = Array.from(selectedWords);
-        
+
         // Delete from Supabase ONLY
         await wordBankService.deleteWords(user.id, termsToDelete);
-        
+
         const updatedWords = words.filter((word) => !selectedWords.has(word.term));
         setWords(updatedWords);
         setSelectedWords(new Set());
@@ -791,7 +800,7 @@ export default function Home() {
   // Update word in storage (for swipe mode) - SUPABASE ONLY
   const updateWordInStorage = async (updatedWord: WordItem) => {
     if (!user) return; // Must be logged in
-    
+
     try {
       // Save to Supabase ONLY
       await wordBankService.updateWord(user.id, updatedWord.term, {
@@ -801,7 +810,7 @@ export default function Home() {
         isFavorite: updatedWord.isFavorite,
         setId: updatedWord.setId,
       });
-      
+
       // Update local state
       const updatedWords = words.map((word) =>
         word.term === updatedWord.term ? updatedWord : word
@@ -847,13 +856,13 @@ export default function Home() {
   // Import data - SUPABASE ONLY
   const handleImportData = async () => {
     if (!user) {
-      alert(appLanguage === 'Bahasa Indonesia' 
+      alert(appLanguage === 'Bahasa Indonesia'
         ? 'Anda harus login untuk mengimpor data'
         : 'You must be logged in to import data');
       return;
     }
-    
-    if (!confirm(appLanguage === 'Bahasa Indonesia' 
+
+    if (!confirm(appLanguage === 'Bahasa Indonesia'
       ? 'Mengimpor data akan menambah data ke akun Anda. Apakah Anda yakin?'
       : 'Importing data will add to your account. Are you sure?')) {
       return;
@@ -882,14 +891,14 @@ export default function Home() {
               await wordBankService.saveWord(user.id, word);
             }
           }
-          
+
           // Import vocab sets to Supabase
           if (importData.vocabSets && Array.isArray(importData.vocabSets)) {
             for (const set of importData.vocabSets) {
               await wordBankService.createVocabSet(user.id, set.id, set.name);
             }
           }
-          
+
           // Only save language preferences to localStorage
           if (importData.appLanguage) {
             localStorage.setItem('app-language', importData.appLanguage);
@@ -913,7 +922,7 @@ export default function Home() {
           setIsSettingsOpen(false);
         } catch (error) {
           console.error('Error importing data:', error);
-          alert(appLanguage === 'Bahasa Indonesia' 
+          alert(appLanguage === 'Bahasa Indonesia'
             ? 'Gagal mengimpor data. Pastikan file format JSON valid.'
             : 'Failed to import data. Please ensure the file is a valid JSON format.');
         }
@@ -931,8 +940,8 @@ export default function Home() {
       const dateStr = today.toISOString().split('T')[0].replace(/-/g, '_');
       const filename = `FlipReader_Backup_${dateStr}.csv`;
       downloadCSV(csvContent, filename);
-      
-      alert(appLanguage === 'Bahasa Indonesia' 
+
+      alert(appLanguage === 'Bahasa Indonesia'
         ? `CSV berhasil diekspor! File: ${filename}`
         : `CSV exported successfully! File: ${filename}`);
     } catch (error) {
@@ -953,13 +962,13 @@ export default function Home() {
       const headers = await getCSVHeaders(file);
       setCsvHeaders(headers);
       setCsvFile(file);
-      
+
       // Auto-detect common column names
       const autoMapping: typeof fieldMapping = {
         term: '',
         definition: '',
       };
-      
+
       headers.forEach(header => {
         const lowerHeader = header.toLowerCase();
         if (!autoMapping.term && (lowerHeader.includes('word') || lowerHeader.includes('term') || lowerHeader.includes('front') || lowerHeader.includes('kata'))) {
@@ -984,7 +993,7 @@ export default function Home() {
           autoMapping.statusHafal = header;
         }
       });
-      
+
       setFieldMapping(autoMapping);
       setIsCSVMappingModalOpen(true);
     } catch (error) {
@@ -1003,7 +1012,7 @@ export default function Home() {
         : 'You must be logged in to import data');
       return;
     }
-    
+
     if (!csvFile || !fieldMapping.term || !fieldMapping.definition) {
       alert(appLanguage === 'Bahasa Indonesia'
         ? 'Harap pilih kolom untuk Kata Utama dan Arti.'
@@ -1022,7 +1031,7 @@ export default function Home() {
         duplicateAction,
         stripHtml
       );
-      
+
       // Save all imported words to Supabase
       for (const word of wordsToImport) {
         try {
@@ -1031,7 +1040,7 @@ export default function Home() {
           // Ignore individual word errors
         }
       }
-      
+
       // Reload data from Supabase
       await loadDataFromSupabase();
 
@@ -1044,15 +1053,15 @@ export default function Home() {
         : totalAdded > 0
           ? `Successfully added ${totalAdded} words to your Word Bank!\n\n- Imported: ${result.imported}\n- Updated: ${result.updated}\n- Skipped (duplicates): ${result.skipped}\n- Errors: ${result.errors}`
           : `No new words were added.\n\n- Skipped (duplicates): ${result.skipped}\n- Errors: ${result.errors}`;
-      
+
       alert(message);
-      
+
       // Close modal and reset
       setIsCSVMappingModalOpen(false);
       setCsvFile(null);
       setCsvHeaders([]);
       setFieldMapping({ term: '', definition: '' });
-      
+
       // Reset file input
       if (csvFileInputRef.current) {
         csvFileInputRef.current.value = '';
@@ -1082,7 +1091,7 @@ export default function Home() {
     const masteredWords = words.filter(w => w.memorizationStatus === 'mastered' || w.memorizationStatus === 'well-known').length;
     const learningWords = words.filter(w => w.memorizationStatus === 'learning').length;
     const vocabularyStrength = totalWords > 0 ? Math.round((masteredWords / totalWords) * 100) : 0;
-    
+
     return { totalWords, masteredWords, learningWords, vocabularyStrength };
   }, [words]);
 
@@ -1336,7 +1345,7 @@ export default function Home() {
               // Rekomendasi harian
               const getDailyRecommendation = () => {
                 if (statistics.totalWords === 0) {
-                  return appLanguage === 'Bahasa Indonesia' 
+                  return appLanguage === 'Bahasa Indonesia'
                     ? 'Mulai tambahkan kata-kata baru untuk memulai perjalanan belajarmu!'
                     : 'Start adding new words to begin your learning journey!';
                 }
@@ -1438,19 +1447,19 @@ export default function Home() {
                         ))
                       )}
                     </div>
-                    
+
                     {/* Reset Stats Today Button - untuk testing */}
                     {user && (
                       <button
                         onClick={async () => {
-                          if (confirm(appLanguage === 'Bahasa Indonesia' 
-                            ? 'Reset statistik hari ini ke 0?' 
+                          if (confirm(appLanguage === 'Bahasa Indonesia'
+                            ? 'Reset statistik hari ini ke 0?'
                             : 'Reset today\'s stats to 0?')) {
                             const success = await wordBankService.resetTodayStats(user.id);
                             if (success) {
                               await loadDailyStats();
-                              alert(appLanguage === 'Bahasa Indonesia' 
-                                ? 'Statistik hari ini berhasil di-reset!' 
+                              alert(appLanguage === 'Bahasa Indonesia'
+                                ? 'Statistik hari ini berhasil di-reset!'
                                 : 'Today\'s stats reset successfully!');
                             }
                           }
@@ -1494,11 +1503,10 @@ export default function Home() {
                     {wordOfTheDay.definition}
                   </p>
                   {wordOfTheDay.partOfSpeech && (
-                    <span className={`inline-block mt-2 px-2 py-1 rounded-lg text-xs font-medium ${
-                      wordOfTheDay.partOfSpeech === 'Noun' ? 'bg-[#DBEAFE] text-blue-700' :
+                    <span className={`inline-block mt-2 px-2 py-1 rounded-lg text-xs font-medium ${wordOfTheDay.partOfSpeech === 'Noun' ? 'bg-[#DBEAFE] text-blue-700' :
                       wordOfTheDay.partOfSpeech === 'Verb' ? 'bg-[#D1FAE5] text-green-700' :
-                      'bg-[#E9D5FF] text-purple-700'
-                    }`}>
+                        'bg-[#E9D5FF] text-purple-700'
+                      }`}>
                       {translatePartOfSpeech(wordOfTheDay.partOfSpeech, appLanguage)}
                     </span>
                   )}
@@ -1533,11 +1541,10 @@ export default function Home() {
               {words.length > 0 && (
                 <button
                   onClick={() => setIsSwipeMode(!isSwipeMode)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] active:scale-95 ${
-                    isSwipeMode
-                      ? 'bg-red-500 text-white hover:bg-red-600'
-                      : 'bg-[#FFB800] text-white hover:bg-[#E6A600]'
-                  }`}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] active:scale-95 ${isSwipeMode
+                    ? 'bg-red-500 text-white hover:bg-red-600'
+                    : 'bg-[#FFB800] text-white hover:bg-[#E6A600]'
+                    }`}
                 >
                   {isSwipeMode ? (appLanguage === 'Bahasa Indonesia' ? 'Keluar' : 'Exit') : (appLanguage === 'Bahasa Indonesia' ? 'Flashcard' : 'Flashcard')}
                 </button>
@@ -1552,12 +1559,12 @@ export default function Home() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm text-[#6B7280]">
                       <span>
-                        {appLanguage === 'Bahasa Indonesia' 
+                        {appLanguage === 'Bahasa Indonesia'
                           ? `Kartu ${currentIndex + 1} dari ${swipeWords.length}`
                           : `Card ${currentIndex + 1} of ${swipeWords.length}`}
                       </span>
                       <span>
-                        {appLanguage === 'Bahasa Indonesia' 
+                        {appLanguage === 'Bahasa Indonesia'
                           ? `${swipeWords.length - currentIndex} tersisa`
                           : `${swipeWords.length - currentIndex} remaining`}
                       </span>
@@ -1593,8 +1600,8 @@ export default function Home() {
                   {swipeWords.length === 0 ? (
                     <div className="text-center py-12">
                       <p className="text-[#6B7280] mb-4">
-                        {appLanguage === 'Bahasa Indonesia' 
-                          ? 'Tidak ada kata untuk dihafal' 
+                        {appLanguage === 'Bahasa Indonesia'
+                          ? 'Tidak ada kata untuk dihafal'
                           : 'No words to memorize'}
                       </p>
                       <button
@@ -1621,11 +1628,11 @@ export default function Home() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                             </svg>
                           </div>
-                          
+
                           <h3 className="text-2xl font-bold text-[#1F2937] mb-6 font-serif">
                             {appLanguage === 'Bahasa Indonesia' ? 'Sesi Selesai!' : 'Session Completed!'}
                           </h3>
-                          
+
                           {/* Statistik Ringkasan */}
                           <div className="mb-6">
                             <div className="grid grid-cols-2 gap-4">
@@ -1642,7 +1649,7 @@ export default function Home() {
                                   </p>
                                 </div>
                               </div>
-                              
+
                               {/* Perlu Diulang - Oranye */}
                               <div className="bg-orange-50 rounded-2xl p-6 border-2 border-orange-200">
                                 <div className="flex flex-col items-center">
@@ -1703,7 +1710,7 @@ export default function Home() {
                                 {appLanguage === 'Bahasa Indonesia' ? 'Pelajari Lagi yang Sulit' : 'Review Difficult Words'}
                               </button>
                             )}
-                            
+
                             <button
                               onClick={async () => {
                                 // Selesai & Simpan: Update status di Supabase
@@ -1720,7 +1727,7 @@ export default function Home() {
                                       memorizationStatus: 'learning'
                                     });
                                   }
-                                  
+
                                   // SIMPAN STATISTIK HARIAN - satu kali saat sesi selesai
                                   // Total kartu yang direview = hafal + perlu diulang
                                   const totalReviewed = sudahHafal.length + perluDiulang.length;
@@ -1728,11 +1735,11 @@ export default function Home() {
                                     console.log('[Selesai & Simpan] Saving daily stats:', totalReviewed, 'cards');
                                     await saveDailyActivity(totalReviewed);
                                   }
-                                  
+
                                   // Reload data from Supabase
                                   await loadDataFromSupabase();
                                 }
-                                
+
                                 // Update local state
                                 const updatedWords = words.map((word) => {
                                   if (sudahHafal.includes(word.term)) {
@@ -1744,7 +1751,7 @@ export default function Home() {
                                   return word;
                                 });
                                 setWords(updatedWords);
-                                
+
                                 // Reset state dan tutup mode flashcard
                                 setCurrentIndex(0);
                                 setSudahHafal([]);
@@ -1781,7 +1788,7 @@ export default function Home() {
                             const updatedWord = { ...currentWord, isFavorite: !currentWord.isFavorite };
                             updateWordInStorage(updatedWord);
                             setSwipeWords(prev => prev.map((w, i) => i === currentIndex ? updatedWord : w));
-                            
+
                             // Track starred words
                             if (updatedWord.isFavorite) {
                               setStarredWords(prev => {
@@ -1805,411 +1812,463 @@ export default function Home() {
             {/* Regular Word Bank View */}
             {!isSwipeMode && (
               <>
-            {/* Vocabulary Sets (Folders) */}
-            {vocabSets.length > 0 && (
-              <div>
-                <h2 className="text-sm font-semibold text-[#6B7280] mb-2">
-                  {t('vocabularySets', appLanguage)}
-                </h2>
-                <div className="grid grid-cols-2 gap-2">
-                  {vocabSets.map((set, index) => {
-                    const wordCount = words.filter((word) => word.setId === set.id).length;
-                    const color = folderColors[index % folderColors.length];
-                    const isSelected = selectedSetId === set.id;
-                    
-                    return (
-                      <button
-                        key={set.id}
-                        onClick={() => {
-                          setSelectedSetId(isSelected ? null : set.id);
-                          setSearchQuery('');
-                        }}
-                        className={`p-3 rounded-xl border-2 text-left transition-all shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] ${
-                          isSelected
-                            ? `${color.bg} text-white border-transparent shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)]`
-                            : 'bg-white text-[#1F2937] border-[#E5E7EB] hover:border-[#D1D5DB] hover:shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)] hover:-translate-y-0.5'
-                        }`}
+                {/* Vocabulary Sets (Folders) */}
+                {vocabSets.length > 0 && (
+                  <div>
+                    <h2 className="text-sm font-semibold text-[#6B7280] mb-2">
+                      {t('vocabularySets', appLanguage)}
+                    </h2>
+                    <div className="grid grid-cols-2 gap-2">
+                      {vocabSets.map((set, index) => {
+                        const wordCount = words.filter((word) => word.setId === set.id).length;
+                        const color = folderColors[index % folderColors.length];
+                        const isSelected = selectedSetId === set.id;
+
+                        return (
+                          <button
+                            key={set.id}
+                            onClick={() => {
+                              setSelectedSetId(isSelected ? null : set.id);
+                              setSearchQuery('');
+                            }}
+                            className={`p-3 rounded-xl border-2 text-left transition-all shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] ${isSelected
+                              ? `${color.bg} text-white border-transparent shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)]`
+                              : 'bg-white text-[#1F2937] border-[#E5E7EB] hover:border-[#D1D5DB] hover:shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)] hover:-translate-y-0.5'
+                              }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">{set.name} ({wordCount})</span>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${isSelected ? `${color.badge} text-white` : 'bg-[#F8F9FA] text-[#6B7280] border border-[#E5E7EB]'
+                                }`}>
+                                {wordCount}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sticky Search Bar & Sort */}
+                <div className="sticky top-14 z-30 bg-[#F8F9FA] py-3 -mx-4 px-4 border-b border-[#E5E7EB] mb-4">
+                  <div className="space-y-3">
+
+                    {/* Language Filters (Sticky) - Only show if mixed languages */}
+                    {(() => {
+                      const languages = Array.from(new Set(words.map(w => normalizeLanguage(w.sourceLanguage))));
+                      if (languages.length > 1) {
+                        return (
+                          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-1 px-1">
+                            <button
+                              onClick={() => setWordBankLanguageFilter('all')}
+                              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex-shrink-0 ${wordBankLanguageFilter === 'all'
+                                ? 'bg-[#1F2937] text-white shadow-md'
+                                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                                }`}
+                            >
+                              All
+                            </button>
+                            {languages.sort().map(lang => (
+                              <button
+                                key={lang}
+                                onClick={() => setWordBankLanguageFilter(lang)}
+                                className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex-shrink-0 flex items-center gap-1.5 ${wordBankLanguageFilter === lang
+                                  ? 'bg-[#1F2937] text-white shadow-md'
+                                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                                  }`}
+                              >
+                                {lang === 'Korean' ? '🇰🇷' :
+                                  lang === 'Japanese' ? '🇯🇵' :
+                                    lang === 'English' ? '🇺🇸' :
+                                      lang === 'Spanish' ? '🇪🇸' :
+                                        lang === 'French' ? '🇫🇷' :
+                                          lang === 'German' ? '🇩🇪' :
+                                            lang === 'Chinese' ? '🇨🇳' :
+                                              lang === 'Italian' ? '🇮🇹' :
+                                                lang === 'Russian' ? '🇷🇺' :
+                                                  lang === 'Arabic' ? '🇸🇦' :
+                                                    lang === 'Portuguese' ? '🇧🇷' :
+                                                      lang === 'Vietnamese' ? '🇻🇳' :
+                                                        lang === 'Thai' ? '🇹🇭' :
+                                                          lang === 'Unknown' ? '❓' : '🌐'}
+                                <span>{lang}</span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                    {/* Search Bar */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder={appLanguage === 'Bahasa Indonesia'
+                          ? 'Cari kata (Korea, Indonesia, atau tata bahasa)...'
+                          : 'Search words (Korean, definition, or grammar)...'}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full px-4 py-2 pl-10 pr-24 border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FFB800] bg-white text-[#1F2937] text-sm shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] transition-all duration-200 focus:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)]"
+                      />
+                      <svg
+                        className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{set.name} ({wordCount})</span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            isSelected ? `${color.badge} text-white` : 'bg-[#F8F9FA] text-[#6B7280] border border-[#E5E7EB]'
-                          }`}>
-                            {wordCount}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+
+                      {/* Sort Dropdown */}
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as 'newest' | 'alphabetical' | 'status')}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 px-3 py-1.5 text-xs border border-[#E5E7EB] rounded-lg bg-white text-[#1F2937] focus:outline-none focus:ring-2 focus:ring-[#FFB800]"
+                      >
+                        <option value="newest">{appLanguage === 'Bahasa Indonesia' ? 'Terbaru' : 'Newest'}</option>
+                        <option value="alphabetical">{appLanguage === 'Bahasa Indonesia' ? 'A-Z' : 'A-Z'}</option>
+                        <option value="status">{appLanguage === 'Bahasa Indonesia' ? 'Status' : 'Status'}</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
 
-            {/* Sticky Search Bar & Sort */}
-            <div className="sticky top-14 z-30 bg-[#F8F9FA] py-3 -mx-4 px-4 border-b border-[#E5E7EB] mb-4">
-              <div className="space-y-3">
-                {/* Search Bar */}
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder={appLanguage === 'Bahasa Indonesia' 
-                      ? 'Cari kata (Korea, Indonesia, atau tata bahasa)...' 
-                      : 'Search words (Korean, definition, or grammar)...'}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full px-4 py-2 pl-10 pr-24 border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FFB800] bg-white text-[#1F2937] text-sm shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] transition-all duration-200 focus:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)]"
-                  />
-                  <svg
-                    className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  
-                  {/* Sort Dropdown */}
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as 'newest' | 'alphabetical' | 'status')}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 px-3 py-1.5 text-xs border border-[#E5E7EB] rounded-lg bg-white text-[#1F2937] focus:outline-none focus:ring-2 focus:ring-[#FFB800]"
-                  >
-                    <option value="newest">{appLanguage === 'Bahasa Indonesia' ? 'Terbaru' : 'Newest'}</option>
-                    <option value="alphabetical">{appLanguage === 'Bahasa Indonesia' ? 'A-Z' : 'A-Z'}</option>
-                    <option value="status">{appLanguage === 'Bahasa Indonesia' ? 'Status' : 'Status'}</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Filter Bar */}
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => setMemorizationFilter('all')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  memorizationFilter === 'all'
-                    ? 'bg-[#FFB800] text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]'
-                    : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F8F9FA]'
-                }`}
-              >
-                {appLanguage === 'Bahasa Indonesia' ? 'Semua' : 'All'}
-              </button>
-              <button
-                onClick={() => setMemorizationFilter('due-review')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  memorizationFilter === 'due-review'
-                    ? 'bg-orange-500 text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]'
-                    : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F8F9FA]'
-                }`}
-              >
-                {appLanguage === 'Bahasa Indonesia' ? 'Waktunya Tinjau' : 'Due Review'}
-              </button>
-              <button
-                onClick={() => setMemorizationFilter('not-mastered')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  memorizationFilter === 'not-mastered'
-                    ? 'bg-[#FFB800] text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]'
-                    : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F8F9FA]'
-                }`}
-              >
-                {appLanguage === 'Bahasa Indonesia' ? 'Belum Hafal' : 'Not Mastered'}
-              </button>
-              <button
-                onClick={() => setMemorizationFilter('mastered')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  memorizationFilter === 'mastered'
-                    ? 'bg-[#FFB800] text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]'
-                    : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F8F9FA]'
-                }`}
-              >
-                {appLanguage === 'Bahasa Indonesia' ? 'Sudah Hafal' : 'Mastered'}
-              </button>
-            </div>
-
-            {/* Word Count */}
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-[#6B7280]">
-                {selectedSetId 
-                  ? `${t('wordsInFolder', appLanguage)}: ${filteredWords.length}`
-                  : `${t('totalWords', appLanguage)}: ${words.length}`
-                }
-              </p>
-              {words.length > 0 && (
-                <button
-                  onClick={toggleSelectionMode}
-                  className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] active:scale-95 ${
-                    isSelectionMode
-                      ? 'bg-red-500 text-white hover:bg-red-600'
-                      : 'bg-blue-500 text-white hover:bg-blue-600'
-                  }`}
-                >
-                  {isSelectionMode ? t('cancel', appLanguage) : t('select', appLanguage)}
-                </button>
-              )}
-            </div>
-
-            {/* Word List */}
-            {words.length === 0 ? (
-              <div className="text-center py-12">
-                <svg
-                  className="w-12 h-12 text-gray-300 mx-auto mb-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <p className="text-[#6B7280] mb-4">{t('emptyWordBank', appLanguage)}</p>
-                <button
-                  onClick={() => setActiveTab('reader')}
-                  className="px-4 py-2 bg-[#FFB800] text-white rounded-xl hover:bg-[#E6A600] text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
-                >
-                  {t('startReading', appLanguage)}
-                </button>
-              </div>
-            ) : filteredWords.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="bg-white border border-[#E5E7EB] rounded-xl p-8 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]">
-                  <svg
-                    className="w-16 h-16 text-gray-300 mx-auto mb-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <h3 className="text-lg font-semibold text-[#1F2937] mb-2 font-serif">
-                    {appLanguage === 'Bahasa Indonesia' 
-                      ? 'Ups! Kata yang kamu cari belum ada' 
-                      : 'Oops! Word not found'}
-                  </h3>
-                  <p className="text-sm text-[#6B7280] mb-6 font-serif">
-                    {appLanguage === 'Bahasa Indonesia' 
-                      ? 'Kata yang kamu cari belum ada di bank kosakata.' 
-                      : 'The word you\'re looking for is not in your vocabulary bank.'}
-                  </p>
+                {/* Filter Bar */}
+                <div className="flex gap-2 flex-wrap">
                   <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setActiveTab('reader');
-                    }}
-                    className="px-6 py-3 bg-[#FFB800] text-white rounded-xl hover:bg-[#E6A600] font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
+                    onClick={() => setMemorizationFilter('all')}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${memorizationFilter === 'all'
+                      ? 'bg-[#FFB800] text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]'
+                      : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F8F9FA]'
+                      }`}
                   >
-                    {appLanguage === 'Bahasa Indonesia' ? 'Tambah Kata Baru' : 'Add New Word'}
+                    {appLanguage === 'Bahasa Indonesia' ? 'Semua' : 'All'}
+                  </button>
+                  <button
+                    onClick={() => setMemorizationFilter('due-review')}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${memorizationFilter === 'due-review'
+                      ? 'bg-orange-500 text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]'
+                      : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F8F9FA]'
+                      }`}
+                  >
+                    {appLanguage === 'Bahasa Indonesia' ? 'Waktunya Tinjau' : 'Due Review'}
+                  </button>
+                  <button
+                    onClick={() => setMemorizationFilter('not-mastered')}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${memorizationFilter === 'not-mastered'
+                      ? 'bg-[#FFB800] text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]'
+                      : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F8F9FA]'
+                      }`}
+                  >
+                    {appLanguage === 'Bahasa Indonesia' ? 'Belum Hafal' : 'Not Mastered'}
+                  </button>
+                  <button
+                    onClick={() => setMemorizationFilter('mastered')}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${memorizationFilter === 'mastered'
+                      ? 'bg-[#FFB800] text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]'
+                      : 'bg-white text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F8F9FA]'
+                      }`}
+                  >
+                    {appLanguage === 'Bahasa Indonesia' ? 'Sudah Hafal' : 'Mastered'}
                   </button>
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-2 pb-20">
-                {filteredWords.map((word, index) => {
-                  const isExpanded = expandedId === word.term;
-                  const isSelected = selectedWords.has(word.term);
-                  const isMastered = word.memorizationStatus === 'mastered' || word.memorizationStatus === 'well-known';
-                  
-                  return (
-                    <div
-                      key={index}
-                      className={`bg-white border rounded-xl overflow-hidden shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] transition-all duration-200 relative ${
-                        isSelected ? 'border-blue-500 bg-blue-50 shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)]' : 'border-[#E5E7EB] hover:shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)]'
-                      } ${isMastered ? 'opacity-80' : ''}`}
-                    >
-                      {/* Indikator Visual - Icon Centang Hijau */}
-                      {isMastered && (
-                        <div className="absolute top-2 right-2 z-10">
-                          <div className="bg-green-500 rounded-full p-1 shadow-sm">
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div
-                        onClick={() => !isSelectionMode && toggleExpand(word.term)}
-                        className={`flex items-center justify-between p-3 ${
-                          isSelectionMode ? 'cursor-default' : 'cursor-pointer hover:bg-[#F8F9FA] transition-colors duration-200'
+
+                {/* Word Count */}
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-[#6B7280]">
+                    {selectedSetId
+                      ? `${t('wordsInFolder', appLanguage)}: ${filteredWords.length}`
+                      : `${t('totalWords', appLanguage)}: ${words.length}`
+                    }
+                  </p>
+                  {words.length > 0 && (
+                    <button
+                      onClick={toggleSelectionMode}
+                      className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] active:scale-95 ${isSelectionMode
+                        ? 'bg-red-500 text-white hover:bg-red-600'
+                        : 'bg-blue-500 text-white hover:bg-blue-600'
                         }`}
+                    >
+                      {isSelectionMode ? t('cancel', appLanguage) : t('select', appLanguage)}
+                    </button>
+                  )}
+                </div>
+
+                {/* Word List */}
+                {words.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg
+                      className="w-12 h-12 text-gray-300 mx-auto mb-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-[#6B7280] mb-4">{t('emptyWordBank', appLanguage)}</p>
+                    <button
+                      onClick={() => setActiveTab('reader')}
+                      className="px-4 py-2 bg-[#FFB800] text-white rounded-xl hover:bg-[#E6A600] text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
+                    >
+                      {t('startReading', appLanguage)}
+                    </button>
+                  </div>
+                ) : filteredWords.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="bg-white border border-[#E5E7EB] rounded-xl p-8 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)]">
+                      <svg
+                        className="w-16 h-16 text-gray-300 mx-auto mb-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          {isSelectionMode && (
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => {}}
-                              onClick={(e) => toggleWordSelection(word.term, e)}
-                              className="w-4 h-4 text-blue-600 border-gray-300 rounded"
-                            />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-base font-bold text-[#1F2937]">
-                                {searchQuery.trim() ? highlightText(word.term, searchQuery) : word.term}
-                              </p>
-                              {/* Icon Speaker */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPlayingAudioId(word.term);
-                                  playWordAudio(
-                                    word.term,
-                                    () => setPlayingAudioId(word.term),
-                                    () => setPlayingAudioId(null)
-                                  );
-                                }}
-                                className={`p-1.5 rounded-full transition-all duration-200 flex-shrink-0 ${
-                                  playingAudioId === word.term
-                                    ? 'bg-blue-100 text-blue-600'
-                                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                }`}
-                                aria-label={appLanguage === 'Bahasa Indonesia' ? 'Putar audio' : 'Play audio'}
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                </svg>
-                              </button>
-                              {isMastered && (
-                                <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">
-                                  {appLanguage === 'Bahasa Indonesia' ? 'Hafal' : 'Mastered'}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm text-[#6B7280] truncate">
-                              {searchQuery.trim() ? highlightText(word.definition, searchQuery) : word.definition}
-                            </p>
-                            
-                            {/* Progress Bar Visual - 3 Titik */}
-                            <div className="flex items-center gap-1 mt-2">
-                              {[0, 1, 2].map((level) => {
-                                const wordInterval = word.interval || 0;
-                                const isFilled = level < wordInterval;
-                                return (
-                                  <div
-                                    key={level}
-                                    className={`w-2 h-2 rounded-full transition-colors ${
-                                      isFilled ? 'bg-green-500' : 'bg-gray-300'
-                                    }`}
-                                  />
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                        {!isSelectionMode && (
-                          <div className="flex items-center gap-2">
-                            <svg
-                              className={`w-4 h-4 text-gray-400 transition-transform ${
-                                isExpanded ? 'transform rotate-180' : ''
-                              }`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                            <button
-                              onClick={(e) => handleDeleteWord(word.term, e)}
-                              className="p-1 text-gray-400 hover:text-red-500"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Expanded Details */}
-                      {isExpanded && (
-                        <div className="px-3 pb-3">
-                          <div className="bg-[#F8F9FA] rounded-xl p-4 space-y-4 border border-[#E5E7EB] shadow-sm">
-                            {/* DEFINITION */}
-                            <div>
-                              <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">DEFINITION</p>
-                              <p className="text-sm text-[#1F2937]">
-                                {searchQuery.trim() ? highlightText(word.definition, searchQuery) : word.definition}
-                              </p>
-                            </div>
-
-                            {/* PART OF SPEECH */}
-                            {word.partOfSpeech && (
-                              <div>
-                                <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">PART OF SPEECH</p>
-                                <span className={`inline-block px-3 py-1.5 rounded-lg text-xs font-medium ${
-                                  word.partOfSpeech === 'Noun' ? 'bg-[#E9D5FF] text-purple-800' :
-                                  word.partOfSpeech === 'Verb' ? 'bg-[#D1FAE5] text-green-800' :
-                                  word.partOfSpeech === 'Adverb' ? 'bg-[#DBEAFE] text-blue-800' :
-                                  word.partOfSpeech === 'Adjective' ? 'bg-[#FED7AA] text-orange-800' :
-                                  'bg-[#FCE7F3] text-pink-700'
-                                }`}>
-                                  {translatePartOfSpeech(word.partOfSpeech, appLanguage)}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* GRAMMAR & MORPHOLOGY */}
-                            {word.grammarNote && (
-                              <div>
-                                <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">GRAMMAR & MORPHOLOGY</p>
-                                <p className="text-sm text-[#1F2937] italic bg-white p-3 rounded-xl border border-[#E5E7EB]">
-                                  {searchQuery.trim() ? highlightText(word.grammarNote, searchQuery) : word.grammarNote}
-                                </p>
-                              </div>
-                            )}
-
-                            {/* EXAMPLE SENTENCE */}
-                            {word.example && (
-                              <div>
-                                <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">EXAMPLE SENTENCE</p>
-                                <div className="bg-white p-3 rounded-xl border border-[#E5E7EB] space-y-2">
-                                  <p className="text-sm text-[#1F2937] italic">
-                                    "{word.example}"
-                                  </p>
-                                  {word.exampleTranslation && (
-                                    <p className="text-xs text-[#6B7280] italic">
-                                      "{word.exampleTranslation}"
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* ORIGINAL SENTENCE */}
-                            {word.originalSentence && (
-                              <div>
-                                <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">ORIGINAL SENTENCE</p>
-                                <div className="bg-white p-3 rounded-xl border border-[#E5E7EB] space-y-2">
-                                  <p className="text-sm text-[#1F2937] italic leading-relaxed">
-                                    "{word.originalSentence}"
-                                  </p>
-                                  {word.originalSentenceTranslation && (
-                                    <p className="text-xs text-[#6B7280] italic">
-                                      "{word.originalSentenceTranslation}"
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Saved Date */}
-                            <div className="pt-3 border-t border-[#E5E7EB]">
-                              <p className="text-xs text-[#6B7280]">
-                                Disimpan: {new Date(word.savedAt).toLocaleDateString('id-ID', {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <h3 className="text-lg font-semibold text-[#1F2937] mb-2 font-serif">
+                        {appLanguage === 'Bahasa Indonesia'
+                          ? 'Ups! Kata yang kamu cari belum ada'
+                          : 'Oops! Word not found'}
+                      </h3>
+                      <p className="text-sm text-[#6B7280] mb-6 font-serif">
+                        {appLanguage === 'Bahasa Indonesia'
+                          ? 'Kata yang kamu cari belum ada di bank kosakata.'
+                          : 'The word you\'re looking for is not in your vocabulary bank.'}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setActiveTab('reader');
+                        }}
+                        className="px-6 py-3 bg-[#FFB800] text-white rounded-xl hover:bg-[#E6A600] font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
+                      >
+                        {appLanguage === 'Bahasa Indonesia' ? 'Tambah Kata Baru' : 'Add New Word'}
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                ) : (
+                  <div className="space-y-2 pb-20">
+                    {filteredWords.map((word, index) => {
+                      const isExpanded = expandedId === word.term;
+                      const isSelected = selectedWords.has(word.term);
+                      const isMastered = word.memorizationStatus === 'mastered' || word.memorizationStatus === 'well-known';
+
+                      return (
+                        <div
+                          key={index}
+                          className={`bg-white border rounded-xl overflow-hidden shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] transition-all duration-200 relative ${isSelected ? 'border-blue-500 bg-blue-50 shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)]' : 'border-[#E5E7EB] hover:shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)]'
+                            } ${isMastered ? 'opacity-80' : ''}`}
+                        >
+                          {/* Indikator Visual - Icon Centang Hijau */}
+                          {isMastered && (
+                            <div className="absolute top-2 right-2 z-10">
+                              <div className="bg-green-500 rounded-full p-1 shadow-sm">
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+
+                          <div
+                            onClick={() => !isSelectionMode && toggleExpand(word.term)}
+                            className={`flex items-center justify-between p-3 ${isSelectionMode ? 'cursor-default' : 'cursor-pointer hover:bg-[#F8F9FA] transition-colors duration-200'
+                              }`}
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              {isSelectionMode && (
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => { }}
+                                  onClick={(e) => toggleWordSelection(word.term, e)}
+                                  className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-base font-bold text-[#1F2937]">
+                                    {searchQuery.trim() ? highlightText(word.term, searchQuery) : word.term}
+                                  </p>
+                                  {/* Language Icon Badge */}
+                                  <span title={normalizeLanguage(word.sourceLanguage)} className="text-base">
+                                    {normalizeLanguage(word.sourceLanguage) === 'Korean' ? '🇰🇷' :
+                                      normalizeLanguage(word.sourceLanguage) === 'Japanese' ? '🇯🇵' :
+                                        normalizeLanguage(word.sourceLanguage) === 'English' ? '🇺🇸' :
+                                          normalizeLanguage(word.sourceLanguage) === 'Spanish' ? '🇪🇸' :
+                                            normalizeLanguage(word.sourceLanguage) === 'French' ? '🇫🇷' :
+                                              normalizeLanguage(word.sourceLanguage) === 'German' ? '🇩🇪' :
+                                                normalizeLanguage(word.sourceLanguage) === 'Chinese' ? '🇨🇳' :
+                                                  normalizeLanguage(word.sourceLanguage) === 'Italian' ? '🇮🇹' :
+                                                    normalizeLanguage(word.sourceLanguage) === 'Russian' ? '🇷🇺' :
+                                                      normalizeLanguage(word.sourceLanguage) === 'Arabic' ? '🇸🇦' :
+                                                        normalizeLanguage(word.sourceLanguage) === 'Portuguese' ? '🇧🇷' :
+                                                          normalizeLanguage(word.sourceLanguage) === 'Vietnamese' ? '🇻🇳' :
+                                                            normalizeLanguage(word.sourceLanguage) === 'Thai' ? '🇹🇭' :
+                                                              normalizeLanguage(word.sourceLanguage) === 'Indonesian' ? '🇮🇩' :
+                                                                normalizeLanguage(word.sourceLanguage) === 'Unknown' ? '❓' : '🌐'}
+                                  </span>
+                                  {/* Icon Speaker */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPlayingAudioId(word.term);
+                                      playWordAudio(
+                                        word.term,
+                                        () => setPlayingAudioId(word.term),
+                                        () => setPlayingAudioId(null)
+                                      );
+                                    }}
+                                    className={`p-1.5 rounded-full transition-all duration-200 flex-shrink-0 ${playingAudioId === word.term
+                                      ? 'bg-blue-100 text-blue-600'
+                                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                      }`}
+                                    aria-label={appLanguage === 'Bahasa Indonesia' ? 'Putar audio' : 'Play audio'}
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                    </svg>
+                                  </button>
+                                  {isMastered && (
+                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                                      {appLanguage === 'Bahasa Indonesia' ? 'Hafal' : 'Mastered'}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-[#6B7280] truncate">
+                                  {searchQuery.trim() ? highlightText(word.definition, searchQuery) : word.definition}
+                                </p>
+
+                                {/* Progress Bar Visual - 3 Titik */}
+                                <div className="flex items-center gap-1 mt-2">
+                                  {[0, 1, 2].map((level) => {
+                                    const wordInterval = word.interval || 0;
+                                    const isFilled = level < wordInterval;
+                                    return (
+                                      <div
+                                        key={level}
+                                        className={`w-2 h-2 rounded-full transition-colors ${isFilled ? 'bg-green-500' : 'bg-gray-300'
+                                          }`}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                            {!isSelectionMode && (
+                              <div className="flex items-center gap-2">
+                                <svg
+                                  className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'transform rotate-180' : ''
+                                    }`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                                <button
+                                  onClick={(e) => handleDeleteWord(word.term, e)}
+                                  className="p-1 text-gray-400 hover:text-red-500"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Expanded Details */}
+                          {isExpanded && (
+                            <div className="px-3 pb-3">
+                              <div className="bg-[#F8F9FA] rounded-xl p-4 space-y-4 border border-[#E5E7EB] shadow-sm">
+                                {/* DEFINITION */}
+                                <div>
+                                  <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">DEFINITION</p>
+                                  <p className="text-sm text-[#1F2937]">
+                                    {searchQuery.trim() ? highlightText(word.definition, searchQuery) : word.definition}
+                                  </p>
+                                </div>
+
+                                {/* PART OF SPEECH */}
+                                {word.partOfSpeech && (
+                                  <div>
+                                    <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">PART OF SPEECH</p>
+                                    <span className={`inline-block px-3 py-1.5 rounded-lg text-xs font-medium ${word.partOfSpeech === 'Noun' ? 'bg-[#E9D5FF] text-purple-800' :
+                                      word.partOfSpeech === 'Verb' ? 'bg-[#D1FAE5] text-green-800' :
+                                        word.partOfSpeech === 'Adverb' ? 'bg-[#DBEAFE] text-blue-800' :
+                                          word.partOfSpeech === 'Adjective' ? 'bg-[#FED7AA] text-orange-800' :
+                                            'bg-[#FCE7F3] text-pink-700'
+                                      }`}>
+                                      {translatePartOfSpeech(word.partOfSpeech, appLanguage)}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* GRAMMAR & MORPHOLOGY */}
+                                {word.grammarNote && (
+                                  <div>
+                                    <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">GRAMMAR & MORPHOLOGY</p>
+                                    <p className="text-sm text-[#1F2937] italic bg-white p-3 rounded-xl border border-[#E5E7EB]">
+                                      {searchQuery.trim() ? highlightText(word.grammarNote, searchQuery) : word.grammarNote}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* EXAMPLE SENTENCE */}
+                                {word.example && (
+                                  <div>
+                                    <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">EXAMPLE SENTENCE</p>
+                                    <div className="bg-white p-3 rounded-xl border border-[#E5E7EB] space-y-2">
+                                      <p className="text-sm text-[#1F2937] italic">
+                                        "{word.example}"
+                                      </p>
+                                      {word.exampleTranslation && (
+                                        <p className="text-xs text-[#6B7280] italic">
+                                          "{word.exampleTranslation}"
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* ORIGINAL SENTENCE */}
+                                {word.originalSentence && (
+                                  <div>
+                                    <p className="text-xs text-[#6B7280] mb-2 font-medium uppercase tracking-wider app-title">ORIGINAL SENTENCE</p>
+                                    <div className="bg-white p-3 rounded-xl border border-[#E5E7EB] space-y-2">
+                                      <p className="text-sm text-[#1F2937] italic leading-relaxed">
+                                        "{word.originalSentence}"
+                                      </p>
+                                      {word.originalSentenceTranslation && (
+                                        <p className="text-xs text-[#6B7280] italic">
+                                          "{word.originalSentenceTranslation}"
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Saved Date */}
+                                <div className="pt-3 border-t border-[#E5E7EB]">
+                                  <p className="text-xs text-[#6B7280]">
+                                    Disimpan: {new Date(word.savedAt).toLocaleDateString('id-ID', {
+                                      year: 'numeric',
+                                      month: 'long',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -2362,142 +2421,146 @@ export default function Home() {
                   <h3 className="text-sm font-semibold text-[#1F2937] mb-3">
                     {appLanguage === 'Bahasa Indonesia' ? 'Akun' : 'Account'}
                   </h3>
-                  {user ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-[#FFB800] rounded-full flex items-center justify-center">
-                          <span className="text-white font-bold text-lg">
-                            {user.email?.charAt(0).toUpperCase()}
-                          </span>
+                  {/* Controls: Search, Sort, Filter */}
+                  <div className="space-y-4 mb-6">
+                    {user ? (
+                      <>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <div className="w-10 h-10 bg-[#FFB800] rounded-full flex items-center justify-center">
+                            <span className="text-white font-bold text-lg">
+                              {user.email?.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-[#1F2937] truncate">{user.email}</p>
+                            <p className="text-xs text-[#6B7280]">
+                              {appLanguage === 'Bahasa Indonesia' ? 'Data tersimpan di cloud' : 'Data saved to cloud'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-[#1F2937] truncate">{user.email}</p>
-                          <p className="text-xs text-[#6B7280]">
-                            {appLanguage === 'Bahasa Indonesia' ? 'Data tersimpan di cloud' : 'Data saved to cloud'}
-                          </p>
-                        </div>
+                        <button
+                          onClick={async () => {
+                            await signOut();
+                            setIsSettingsOpen(false);
+                            router.push('/login');
+                          }}
+                          className="w-full px-4 py-2 bg-white border border-[#E5E7EB] text-[#6B7280] rounded-xl hover:bg-[#F8F9FA] text-sm font-medium transition-all duration-200"
+                        >
+                          {appLanguage === 'Bahasa Indonesia' ? 'Keluar' : 'Sign Out'}
+                        </button>
+                      </>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-[#6B7280] mb-3">
+                          {appLanguage === 'Bahasa Indonesia'
+                            ? 'Masuk untuk menyimpan data ke cloud dan akses dari perangkat manapun.'
+                            : 'Sign in to save data to cloud and access from any device.'}
+                        </p>
+                        <button
+                          onClick={() => router.push('/login')}
+                          className="w-full px-4 py-2 bg-[#FFB800] text-white rounded-xl hover:bg-[#E6A600] text-sm font-semibold shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)] transition-all duration-200 active:scale-95"
+                        >
+                          {appLanguage === 'Bahasa Indonesia' ? 'Masuk / Daftar' : 'Sign In / Register'}
+                        </button>
                       </div>
-                      <button
-                        onClick={async () => {
-                          await signOut();
-                          router.push('/login');
-                        }}
-                        className="w-full px-4 py-2 bg-white border border-[#E5E7EB] text-[#6B7280] rounded-xl hover:bg-[#F8F9FA] text-sm font-medium transition-all duration-200"
-                      >
-                        {appLanguage === 'Bahasa Indonesia' ? 'Keluar' : 'Sign Out'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-xs text-[#6B7280] mb-3">
-                        {appLanguage === 'Bahasa Indonesia' 
-                          ? 'Masuk untuk menyimpan data ke cloud dan akses dari perangkat manapun.'
-                          : 'Sign in to save data to cloud and access from any device.'}
-                      </p>
-                      <button
-                        onClick={() => router.push('/login')}
-                        className="w-full px-4 py-2 bg-[#FFB800] text-white rounded-xl hover:bg-[#E6A600] text-sm font-semibold shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)] transition-all duration-200 active:scale-95"
-                      >
-                        {appLanguage === 'Bahasa Indonesia' ? 'Masuk / Daftar' : 'Sign In / Register'}
-                      </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-[#1F2937] mb-2">
+                      {appLanguage === 'Bahasa Indonesia' ? 'Pilihan Bahasa Aplikasi' : 'App Language'}
+                    </label>
+                    <select
+                      value={appLanguage}
+                      onChange={(e) => setAppLanguage(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FFB800] bg-white text-[#1F2937] text-sm shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] transition-all duration-200"
+                    >
+                      <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                      <option value="English">English</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-[#1F2937] mb-2">
+                      {appLanguage === 'Bahasa Indonesia'
+                        ? 'Pilihan Bahasa Tujuan Transmisi (AI Target Language)'
+                        : 'Target Language for Translation (AI)'}
+                    </label>
+                    <select
+                      value={targetLanguage}
+                      onChange={(e) => setTargetLanguage(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FFB800] bg-white text-[#1F2937] text-sm shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] transition-all duration-200"
+                    >
+                      <option value="Indonesian">Bahasa Indonesia</option>
+                      <option value="English">English</option>
+                      <option value="Japanese">Japanese</option>
+                      <option value="Chinese">Chinese</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-[#1F2937] mb-2">
-                    {appLanguage === 'Bahasa Indonesia' ? 'Pilihan Bahasa Aplikasi' : 'App Language'}
-                  </label>
-                  <select
-                    value={appLanguage}
-                    onChange={(e) => setAppLanguage(e.target.value)}
-                    className="w-full px-3 py-2 border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FFB800] bg-white text-[#1F2937] text-sm shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] transition-all duration-200"
-                  >
-                    <option value="Bahasa Indonesia">Bahasa Indonesia</option>
-                    <option value="English">English</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-[#1F2937] mb-2">
-                    {appLanguage === 'Bahasa Indonesia' 
-                      ? 'Pilihan Bahasa Tujuan Transmisi (AI Target Language)'
-                      : 'Target Language for Translation (AI)'}
-                  </label>
-                  <select
-                    value={targetLanguage}
-                    onChange={(e) => setTargetLanguage(e.target.value)}
-                    className="w-full px-3 py-2 border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FFB800] bg-white text-[#1F2937] text-sm shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] transition-all duration-200"
-                  >
-                    <option value="Indonesian">Bahasa Indonesia</option>
-                    <option value="English">English</option>
-                    <option value="Japanese">Japanese</option>
-                    <option value="Chinese">Chinese</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="border-t border-[#E5E7EB] p-4 space-y-2">
-                <h3 className="text-sm font-semibold text-[#1F2937] mb-3">
-                  {appLanguage === 'Bahasa Indonesia' ? 'Manajemen Data' : 'Data Management'}
-                </h3>
-                <button
-                  onClick={handleExportData}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  <span>{appLanguage === 'Bahasa Indonesia' ? 'Ekspor Data (JSON)' : 'Export Data (JSON)'}</span>
-                </button>
-                <button
-                  onClick={handleImportData}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
-                  <span>{appLanguage === 'Bahasa Indonesia' ? 'Impor Data' : 'Import Data'}</span>
-                </button>
-                
-                {/* CSV Export/Import Section */}
-                <div className="pt-2 border-t border-[#E5E7EB] mt-2">
-                  <h4 className="text-xs font-semibold text-[#6B7280] mb-2 uppercase tracking-wider">
-                    {appLanguage === 'Bahasa Indonesia' ? 'CSV (Excel/Anki)' : 'CSV (Excel/Anki)'}
-                  </h4>
+                <div className="border-t border-[#E5E7EB] p-4 space-y-2">
+                  <h3 className="text-sm font-semibold text-[#1F2937] mb-3">
+                    {appLanguage === 'Bahasa Indonesia' ? 'Manajemen Data' : 'Data Management'}
+                  </h3>
                   <button
-                    onClick={handleExportCSV}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#FFB800] hover:bg-[#E6A600] text-white rounded-xl text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95 mb-2"
+                    onClick={handleExportData}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    <span>{appLanguage === 'Bahasa Indonesia' ? 'Cadangkan ke CSV (Excel/Anki)' : 'Backup to CSV (Excel/Anki)'}</span>
+                    <span>{appLanguage === 'Bahasa Indonesia' ? 'Ekspor Data (JSON)' : 'Export Data (JSON)'}</span>
                   </button>
                   <button
-                    onClick={() => csvFileInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-xl text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
+                    onClick={handleImportData}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
-                    <span>{appLanguage === 'Bahasa Indonesia' ? 'Pulihkan dari CSV' : 'Restore from CSV'}</span>
+                    <span>{appLanguage === 'Bahasa Indonesia' ? 'Impor Data' : 'Import Data'}</span>
                   </button>
-                  <input
-                    ref={csvFileInputRef}
-                    type="file"
-                    accept=".csv"
-                    className="hidden"
-                    onChange={handleImportCSV}
-                  />
+
+                  {/* CSV Export/Import Section */}
+                  <div className="pt-2 border-t border-[#E5E7EB] mt-2">
+                    <h4 className="text-xs font-semibold text-[#6B7280] mb-2 uppercase tracking-wider">
+                      {appLanguage === 'Bahasa Indonesia' ? 'CSV (Excel/Anki)' : 'CSV (Excel/Anki)'}
+                    </h4>
+                    <button
+                      onClick={handleExportCSV}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#FFB800] hover:bg-[#E6A600] text-white rounded-xl text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95 mb-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>{appLanguage === 'Bahasa Indonesia' ? 'Cadangkan ke CSV (Excel/Anki)' : 'Backup to CSV (Excel/Anki)'}</span>
+                    </button>
+                    <button
+                      onClick={() => csvFileInputRef.current?.click()}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-xl text-sm font-medium shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_8px_-1px_rgba(0,0,0,0.12),0_3px_5px_-1px_rgba(0,0,0,0.08)] transition-all duration-200 active:scale-95"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      <span>{appLanguage === 'Bahasa Indonesia' ? 'Pulihkan dari CSV' : 'Restore from CSV'}</span>
+                    </button>
+                    <input
+                      ref={csvFileInputRef}
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={handleImportCSV}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </>
-      )}
+      )
+      }
 
-      {/* CSV Field Mapping Modal */}
       {isCSVMappingModalOpen && (
         <>
           <div
@@ -2653,7 +2716,7 @@ export default function Home() {
                       className="w-4 h-4 text-[#FFB800] border-gray-300 rounded focus:ring-[#FFB800]"
                     />
                     <label htmlFor="stripHtml" className="text-sm text-[#1F2937]">
-                      {appLanguage === 'Bahasa Indonesia' 
+                      {appLanguage === 'Bahasa Indonesia'
                         ? 'Bersihkan tag HTML (untuk file dari Anki)'
                         : 'Strip HTML tags (for Anki files)'}
                     </label>
@@ -2690,6 +2753,8 @@ export default function Home() {
         appLanguage={appLanguage}
         dueReviewCount={dueReviewCount}
       />
-    </div>
+    </div >
   );
 }
+
+// End of file

@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 export interface WordItem {
   term: string;
   definition: string;
+  sourceLanguage?: string; // e.g. 'Korean', 'English'
   partOfSpeech: string;
   grammarNote?: string;
   example?: string;
@@ -59,6 +60,7 @@ export async function fetchWords(userId: string): Promise<WordItem[]> {
     return data.map(row => ({
       term: row.word,                                     // DB: word → App: term
       definition: row.definition,
+      sourceLanguage: row.source_language || 'Korean',    // DB: source_language
       partOfSpeech: row.part_of_speech || '',
       grammarNote: row.grammar_note || '',
       example: row.example || '',
@@ -83,7 +85,7 @@ export async function fetchWords(userId: string): Promise<WordItem[]> {
 // Save a new word
 export async function saveWord(userId: string, word: WordItem): Promise<void> {
   console.log('wordBankService.saveWord called with:', { userId, word: word.term });
-  
+
   // Mapping App fields → DB columns (SKEMA SUPER LENGKAP)
   const insertData = {
     user_id: userId,
@@ -97,6 +99,7 @@ export async function saveWord(userId: string, word: WordItem): Promise<void> {
     original_sentence_translation: word.originalSentenceTranslation || null,
     saved_at: word.savedAt || new Date().toISOString(),
     folder_name: word.setId || 'uncategorized',         // App: setId → DB: folder_name
+    source_language: word.sourceLanguage || 'Korean',   // App: sourceLanguage → DB: source_language
     is_favorite: word.isFavorite || false,
     memorization_status: word.memorizationStatus || null, // App: memorizationStatus → DB: memorization_status
     interval: word.interval || 0,
@@ -104,9 +107,9 @@ export async function saveWord(userId: string, word: WordItem): Promise<void> {
     next_review: word.nextReview || null,
     notes: word.notes || null,
   };
-  
+
   console.log('Inserting to Supabase:', insertData);
-  
+
   const { data, error } = await supabase
     .from('word_bank')
     .upsert(insertData, {
@@ -124,14 +127,14 @@ export async function saveWord(userId: string, word: WordItem): Promise<void> {
     });
     throw error;
   }
-  
+
   console.log('Successfully saved to Supabase:', data);
 }
 
 // Update a word
 export async function updateWord(userId: string, term: string, updates: Partial<WordItem>): Promise<void> {
   const updateData: Record<string, unknown> = {};
-  
+
   if (updates.definition !== undefined) updateData.definition = updates.definition;
   if (updates.partOfSpeech !== undefined) updateData.part_of_speech = updates.partOfSpeech;
   if (updates.grammarNote !== undefined) updateData.grammar_note = updates.grammarNote;
@@ -139,6 +142,7 @@ export async function updateWord(userId: string, term: string, updates: Partial<
   if (updates.exampleTranslation !== undefined) updateData.example_translation = updates.exampleTranslation;
   if (updates.originalSentence !== undefined) updateData.original_sentence = updates.originalSentence;
   if (updates.originalSentenceTranslation !== undefined) updateData.original_sentence_translation = updates.originalSentenceTranslation;
+  if (updates.sourceLanguage !== undefined) updateData.source_language = updates.sourceLanguage;
   if (updates.setId !== undefined) updateData.folder_name = updates.setId;       // DB: folder_name
   if (updates.isFavorite !== undefined) updateData.is_favorite = updates.isFavorite;
   if (updates.memorizationStatus !== undefined) updateData.memorization_status = updates.memorizationStatus;  // DB: memorization_status
@@ -341,7 +345,7 @@ export async function renameVocabSet(userId: string, setId: string, newName: str
 export async function getDailyStats(userId: string): Promise<Record<string, number>> {
   try {
     console.log('[getDailyStats] Fetching for user:', userId);
-    
+
     const { data, error } = await supabase
       .from('daily_stats')
       .select('date, words_learned')
@@ -380,7 +384,7 @@ export async function resetTodayStats(userId: string): Promise<boolean> {
   try {
     const today = new Date().toISOString().split('T')[0];
     console.log('[resetTodayStats] Resetting stats for date:', today);
-    
+
     const { error } = await supabase
       .from('daily_stats')
       .upsert(
@@ -414,7 +418,7 @@ export async function incrementDailyStats(userId: string, count: number = 1): Pr
     // Format tanggal YYYY-MM-DD menggunakan toISOString
     const today = new Date().toISOString().split('T')[0];
     console.log('[incrementDailyStats] Date:', today, 'Count:', count, 'UserId:', userId);
-    
+
     // Step 1: Cek apakah sudah ada data untuk hari ini
     const { data: existing, error: fetchError } = await supabase
       .from('daily_stats')
@@ -430,7 +434,7 @@ export async function incrementDailyStats(userId: string, count: number = 1): Pr
     // Hitung total baru
     const currentCount = existing?.words_learned || 0;
     const newCount = currentCount + count;
-    
+
     console.log('[incrementDailyStats] Current:', currentCount, '→ New:', newCount);
 
     // Step 2: Upsert ke Supabase
@@ -453,14 +457,14 @@ export async function incrementDailyStats(userId: string, count: number = 1): Pr
     }
 
     console.log('[incrementDailyStats] SUCCESS! Saved:', newCount, 'for date:', today);
-    
+
     // Hapus localStorage untuk menghentikan pop-up migrasi
     if (typeof window !== 'undefined') {
       localStorage.removeItem('word_bank');
       localStorage.removeItem('my-word-bank');
       localStorage.removeItem('daily-stats');
     }
-    
+
     return true;
   } catch (err) {
     console.error('[incrementDailyStats] Exception:', err);
@@ -559,14 +563,14 @@ export async function saveUserSettings(
 // Check if there's local data to migrate
 export function hasLocalData(): boolean {
   if (typeof window === 'undefined') return false;
-  
+
   try {
     const wordBank = localStorage.getItem('my-word-bank');
     const vocabSets = localStorage.getItem('vocab-sets');
-    
+
     const hasWords = wordBank ? JSON.parse(wordBank).length > 0 : false;
     const hasSets = vocabSets ? JSON.parse(vocabSets).length > 0 : false;
-    
+
     return hasWords || hasSets;
   } catch {
     return false;
@@ -576,11 +580,11 @@ export function hasLocalData(): boolean {
 // Get local data counts
 export function getLocalDataCounts(): { words: number; sets: number } {
   if (typeof window === 'undefined') return { words: 0, sets: 0 };
-  
+
   try {
     const wordBank = localStorage.getItem('my-word-bank');
     const vocabSets = localStorage.getItem('vocab-sets');
-    
+
     return {
       words: wordBank ? JSON.parse(wordBank).length : 0,
       sets: vocabSets ? JSON.parse(vocabSets).length : 0,
@@ -669,17 +673,17 @@ export async function migrateLocalDataToSupabase(userId: string): Promise<{
 // Clear local data after migration - IMPORTANT: This must remove all word/vocab data
 export function clearLocalData(): void {
   if (typeof window === 'undefined') return;
-  
+
   // Remove word bank and vocab data (critical for stopping migration popup)
   localStorage.removeItem('my-word-bank');
   localStorage.removeItem('vocab-sets');
   localStorage.removeItem('daily-stats');
-  
+
   // Also clear any alternative key names that might exist
   localStorage.removeItem('word-bank');
   localStorage.removeItem('wordBank');
   localStorage.removeItem('vocabSets');
-  
+
   // Keep app-language and preferred-target-language as they're UI preferences
   // These are stored in Supabase anyway, so keeping them local is fine
 }
