@@ -86,7 +86,6 @@ export default function Home() {
   const [perluDiulang, setPerluDiulang] = useState<string[]>([]); // Array of word IDs (term)
   const [starredWords, setStarredWords] = useState<WordItem[]>([]);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
-  const [dailyStatsVersion, setDailyStatsVersion] = useState(0); // Untuk memicu re-render grafik
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null); // Track which word is playing audio
 
   // Hydration-safe states for client-only data

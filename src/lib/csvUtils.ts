@@ -20,6 +20,11 @@ interface WordItem {
   nextReview?: string;
 }
 
+interface VocabSet {
+  id: string;
+  name: string;
+}
+
 /**
  * Strip HTML tags from text (for Anki imports)
  */
@@ -49,36 +54,6 @@ const escapeCSVField = (field: string | undefined | null): string => {
   const escaped = String(field).replace(/"/g, '""');
   // Wrap in quotes
   return `"${escaped}"`;
-};
-
-/**
- * Get folder name from setId
- */
-const getFolderName = (setId: string | undefined, vocabSets: any[]): string => {
-  if (!setId || setId === 'uncategorized') {
-    return 'Tidak Terkategori';
-  }
-  const set = vocabSets.find(s => s.id === setId);
-  return set ? set.name : 'Tidak Terkategori';
-};
-
-/**
- * Get level hafalan text from interval
- */
-const getLevelHafal = (interval: number | undefined): string => {
-  if (!interval && interval !== 0) return 'Baru';
-  switch (interval) {
-    case 0:
-      return 'Baru';
-    case 1:
-      return 'Level 1 (1 hari)';
-    case 2:
-      return 'Level 2 (3 hari)';
-    case 3:
-      return 'Level 3 (7 hari)';
-    default:
-      return 'Baru';
-  }
 };
 
 /**
@@ -118,7 +93,7 @@ const formatDateForCSV = (dateString: string | undefined): string => {
 /**
  * Export words to CSV format
  */
-export const exportToCSV = (words: WordItem[], vocabSets: any[]): string => {
+export const exportToCSV = (words: WordItem[], _vocabSets: VocabSet[]): string => {
   // CSV Headers - sesuai permintaan user
   const headers = [
     'Word',
@@ -164,15 +139,15 @@ export const downloadCSV = (csvContent: string, filename: string): void => {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
-  
+
   link.setAttribute('href', url);
   link.setAttribute('download', filename);
   link.style.visibility = 'hidden';
-  
+
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  
+
   URL.revokeObjectURL(url);
 };
 
@@ -183,11 +158,11 @@ const parseCSVLine = (line: string): string[] => {
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
-  
+
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
     const nextChar = line[i + 1];
-    
+
     if (char === '"') {
       if (inQuotes && nextChar === '"') {
         // Escaped quote
@@ -205,10 +180,10 @@ const parseCSVLine = (line: string): string[] => {
       current += char;
     }
   }
-  
+
   // Add last field
   result.push(current);
-  
+
   return result;
 };
 
@@ -226,13 +201,13 @@ export const parseCSV = (csvContent: string): string[][] => {
 export const getCSVHeaders = async (file: File): Promise<string[]> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
         const csvContent = text.replace(/^\uFEFF/, '');
         const parsed = parseCSV(csvContent);
-        
+
         if (parsed.length < 1) {
           reject(new Error('CSV file is empty'));
           return;
@@ -274,8 +249,8 @@ export interface FieldMapping {
  * Convert CSV row to WordItem with field mapping
  */
 const csvRowToWordItemWithMapping = (
-  row: string[], 
-  headers: string[], 
+  row: string[],
+  headers: string[],
   mapping: FieldMapping,
   stripHtml: boolean = true
 ): WordItem | null => {
@@ -294,7 +269,7 @@ const csvRowToWordItemWithMapping = (
 
     const term = getField(mapping.term);
     const definition = getField(mapping.definition);
-    
+
     if (!term || !definition) {
       return null;
     }
@@ -302,7 +277,7 @@ const csvRowToWordItemWithMapping = (
     // Parse Status_Hafal if available in mapping
     let memorizationStatus: 'known' | 'unknown' | 'well-known' | 'mastered' | 'learning' | null = 'learning';
     let interval: number | undefined = 0;
-    
+
     if (mapping.statusHafal) {
       const statusText = getField(mapping.statusHafal).toLowerCase();
       if (statusText.includes('dikuasai') || statusText.includes('mastered')) {
@@ -367,7 +342,7 @@ const csvRowToWordItemWithMapping = (
 export const importFromCSVWithMapping = async (
   file: File,
   existingWords: WordItem[],
-  vocabSets: any[],
+  vocabSets: VocabSet[],
   mapping: FieldMapping,
   duplicateAction: 'skip' | 'update' = 'skip',
   stripHtml: boolean = true
@@ -376,14 +351,14 @@ export const importFromCSVWithMapping = async (
   const updatedVocabSets = [...vocabSets];
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
         // Remove BOM if present
         const csvContent = text.replace(/^\uFEFF/, '');
         const parsed = parseCSV(csvContent);
-        
+
         if (parsed.length < 2) {
           reject(new Error('CSV file is empty or invalid'));
           return;
@@ -408,7 +383,7 @@ export const importFromCSVWithMapping = async (
           }
 
           const word = csvRowToWordItemWithMapping(row, headers, mapping, stripHtml);
-          
+
           if (!word) {
             errors++;
             return;
@@ -465,7 +440,7 @@ export const importFromCSVWithMapping = async (
         // Update vocabSets array in place
         vocabSets.length = 0;
         vocabSets.push(...updatedVocabSets);
-        
+
         resolve({ imported, skipped, updated, errors });
       } catch (error) {
         reject(error);
@@ -486,7 +461,7 @@ export const importFromCSVWithMapping = async (
 export const importFromCSV = async (
   file: File,
   existingWords: WordItem[],
-  vocabSets: any[]
+  vocabSets: VocabSet[]
 ): Promise<{ imported: number; skipped: number; errors: number }> => {
   const defaultMapping: FieldMapping = {
     term: 'Word',
@@ -499,7 +474,7 @@ export const importFromCSV = async (
     originalSentenceTranslation: 'Original_Sentence_Translation',
     folder: 'Folder',
   };
-  
+
   const result = await importFromCSVWithMapping(file, existingWords, vocabSets, defaultMapping, 'skip', false);
   return {
     imported: result.imported,

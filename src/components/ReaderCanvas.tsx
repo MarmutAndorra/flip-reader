@@ -511,15 +511,16 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
           // Close panel after short delay if strictly saving new word
           // But maybe user wants to see it. Let's keep it open but updated state.
           // setTimeout(() => handleClosePanel(), 1500); 
-        } catch (supabaseError: any) {
-          console.error('Error dari Supabase:', supabaseError);
+        } catch (supabaseError: unknown) {
+          const err = supabaseError as { message?: string; code?: string; details?: string; hint?: string };
+          console.error('Error dari Supabase:', err);
           console.error('Supabase error details:', {
-            message: supabaseError.message,
-            code: supabaseError.code,
-            details: supabaseError.details,
-            hint: supabaseError.hint
+            message: err.message,
+            code: err.code,
+            details: err.details,
+            hint: err.hint
           });
-          alert(`Gagal menyimpan ke database: ${supabaseError.message}`);
+          alert(`Gagal menyimpan ke database: ${err.message || 'Unknown error'}`);
         }
       } else {
         // Local only fallback or prompt login
@@ -1271,7 +1272,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
 
                 <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100 max-h-24 overflow-y-auto">
                   <p className="text-sm text-[#1F2937] font-medium leading-normal italic">
-                    "{getSmartSelectionPhrase()}"
+                    &quot;{getSmartSelectionPhrase()}&quot;
                   </p>
                 </div>
 
