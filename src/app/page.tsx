@@ -147,19 +147,26 @@ export default function Home() {
 
     // 2. Load vocab sets (independent operation)
     try {
+      console.log('[loadDataFromSupabase] Fetching vocab sets for user:', user.id);
       const fetchedSets = await wordBankService.fetchVocabSets(user.id);
+      console.log('[loadDataFromSupabase] Fetched sets:', fetchedSets);
+
       if (fetchedSets.length === 0) {
         // Create default set if none exists
+        console.log('[loadDataFromSupabase] No sets found, creating default...');
         const defaultSet: VocabSet = { id: 'uncategorized', name: 'Tidak Terkategori' };
         await wordBankService.createVocabSet(user.id, defaultSet.id, defaultSet.name);
         setVocabSets([defaultSet]);
       } else {
         setVocabSets(fetchedSets);
       }
-    } catch {
-      // Silent fail - set default vocab set
-      const defaultSet: VocabSet = { id: 'uncategorized', name: 'Tidak Terkategori' };
-      setVocabSets([defaultSet]);
+    } catch (err) {
+      console.error('[loadDataFromSupabase] Vocab sets load failed:', err);
+      // If none loaded, preserve current or at least set default locally
+      if (vocabSets.length === 0) {
+        const defaultSet: VocabSet = { id: 'uncategorized', name: 'Tidak Terkategori' };
+        setVocabSets([defaultSet]);
+      }
     }
 
     // 3. Load user settings (independent operation)

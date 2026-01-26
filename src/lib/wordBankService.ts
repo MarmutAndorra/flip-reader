@@ -275,9 +275,9 @@ export async function fetchVocabSets(userId: string): Promise<VocabSet[]> {
       id: row.set_id,
       name: row.name,
     }));
-  } catch {
-    // Silent fail - return empty array
-    return [];
+  } catch (err) {
+    console.error('fetchVocabSets exception:', err);
+    throw err; // Throw so caller knows it failed
   }
 }
 
@@ -292,20 +292,20 @@ export async function createVocabSet(userId: string, setId: string, name: string
         set_id: setId,
         name: name,
       }, {
-        onConflict: 'user_id,set_id',
-        ignoreDuplicates: true, // Don't update if already exists
+        onConflict: 'user_id,set_id'
       });
 
     if (error) {
       // Check if it's a duplicate error - that's okay, ignore it
       if (error.code === '23505' || error.message?.includes('duplicate')) {
-        // Silently ignore duplicate - set already exists
         return;
       }
       console.warn('Note: Vocab set creation issue:', error.message);
+      throw error;
     }
-  } catch {
-    // Silent fail - vocab set might already exist
+  } catch (err) {
+    console.error('createVocabSet exception:', err);
+    throw err;
   }
 }
 
