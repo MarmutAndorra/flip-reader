@@ -93,7 +93,7 @@ const formatDateForCSV = (dateString: string | undefined): string => {
 /**
  * Export words to CSV format
  */
-export const exportToCSV = (words: WordItem[], _vocabSets: VocabSet[]): string => {
+export const exportToCSV = (words: WordItem[]): string => {
   // CSV Headers - sesuai permintaan user
   const headers = [
     'Word',
@@ -258,9 +258,9 @@ const csvRowToWordItemWithMapping = (
     // Helper to get field value
     const getField = (fieldName: string | undefined): string => {
       if (!fieldName) return '';
-      const index = headers.findIndex(h => h === fieldName);
-      if (index < 0 || index >= row.length) return '';
-      let value = row[index].replace(/^"|"$/g, '').replace(/""/g, '"');
+      const fieldIndex = headers.findIndex(h => h === fieldName);
+      if (fieldIndex < 0 || fieldIndex >= row.length) return '';
+      let value = row[fieldIndex].replace(/^"|"$/g, '').replace(/""/g, '"');
       if (stripHtml) {
         value = stripHTML(value);
       }

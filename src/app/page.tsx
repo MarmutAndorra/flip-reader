@@ -941,7 +941,7 @@ export default function Home() {
   // Handle CSV Export
   const handleExportCSV = () => {
     try {
-      const csvContent = exportToCSV(words, vocabSets);
+      const csvContent = exportToCSV(words);
       const today = new Date();
       const dateStr = today.toISOString().split('T')[0].replace(/-/g, '_');
       const filename = `FlipReader_Backup_${dateStr}.csv`;
