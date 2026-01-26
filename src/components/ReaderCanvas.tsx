@@ -77,6 +77,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
   const [isPlayingExampleAudio, setIsPlayingExampleAudio] = useState(false);
   const [isPlayingOriginalAudio, setIsPlayingOriginalAudio] = useState(false);
   const [activeAnalysisTab, setActiveAnalysisTab] = useState<'analysis' | 'examples' | 'insights'>('analysis');
+  const [isSmartSelection, setIsSmartSelection] = useState(true); // Default to smart for better mobile exp
 
   // Load text history from localStorage
   const loadTextHistory = () => {
@@ -686,68 +687,106 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
   }
 
   // Render Text with Highlights
-  // This function reconstructs the text by interleaving raw text chunks and highlight spans
   const renderHighlightedText = () => {
+    // 1. First, segment by existing highlights
+    const segments: { text: string; start: number; end: number; type: 'raw' | 'highlight'; highlightId?: string; color?: string; data?: WordData }[] = [];
+
     if (highlights.length === 0) {
-      return text;
+      segments.push({ text, start: 0, end: text.length, type: 'raw' });
+    } else {
+      const sortedHighlights = [...highlights].sort((a, b) => a.start - b.start);
+      let lastIndex = 0;
+
+      sortedHighlights.forEach((h) => {
+        if (h.start > lastIndex) {
+          segments.push({ text: text.substring(lastIndex, h.start), start: lastIndex, end: h.start, type: 'raw' });
+        }
+        segments.push({ text: h.text, start: h.start, end: h.end, type: 'highlight', highlightId: h.id, color: h.color, data: h.data });
+        lastIndex = h.end;
+      });
+
+      if (lastIndex < text.length) {
+        segments.push({ text: text.substring(lastIndex), start: lastIndex, end: text.length, type: 'raw' });
+      }
     }
 
-    // Sort highlights by start position
-    const sortedHighlights = [...highlights].sort((a, b) => a.start - b.start);
-
-    const elements = [];
-    let lastIndex = 0;
-
-    sortedHighlights.forEach((h, i) => {
-      // Text before highlight
-      if (h.start > lastIndex) {
-        elements.push(<span key={`text-${i}`}>{text.substring(lastIndex, h.start)}</span>);
+    // 2. Map segments to UI components
+    return segments.map((seg, idx) => {
+      if (seg.type === 'highlight') {
+        return (
+          <mark
+            key={`mark-${seg.highlightId}`}
+            style={{ backgroundColor: seg.color, color: 'inherit', padding: '0 2px', borderRadius: '4px' }}
+            className="cursor-pointer transition-opacity hover:opacity-80"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelection({
+                text: seg.text,
+                rect: (e.target as HTMLElement).getBoundingClientRect(),
+                start: seg.start,
+                end: seg.end
+              });
+              setSelectedPhrase(seg.text);
+              setContextSentence(seg.data?.originalSentence || null);
+              setActiveHighlightId(seg.highlightId!);
+              if (seg.data) {
+                setWordData(seg.data);
+                setIsSaved(true);
+                setShowTopSheet(true);
+              } else {
+                handleExplainSelection();
+              }
+            }}
+          >
+            {seg.text}
+          </mark>
+        );
       }
 
-      // Highlighted text
-      elements.push(
-        <mark
-          key={`mark-${h.id}`}
-          style={{ backgroundColor: h.color, color: 'inherit', padding: '0 2px', borderRadius: '4px' }}
-          className="cursor-pointer transition-opacity hover:opacity-80"
-          onClick={(e) => {
-            e.stopPropagation(); // Stop standard selection logic
-            // Re-open explanation for this saved word
-            setSelection({
-              text: h.text,
-              rect: (e.target as HTMLElement).getBoundingClientRect(),
-              start: h.start,
-              end: h.end
-            });
+      // If Smart Selection is ON, split the raw text into interactive words
+      if (isSmartSelection) {
+        // Regex splits characters/words but preserves spaces
+        // Supporting CJK and Latin
+        const tokens = seg.text.split(/(\s+|[,.!?;:()\[\]{}""'']|[。！？、，（）；：【】“”‘’])/g).filter(t => t !== '');
+        let currentOffset = seg.start;
 
-            setSelectedPhrase(h.text);
-            setContextSentence(h.data?.originalSentence || null); // Restore context if available
-            setActiveHighlightId(h.id); // Track which highlight is open
+        return tokens.map((token, tIdx) => {
+          const start = currentOffset;
+          currentOffset += token.length;
+          const end = currentOffset;
+          const isActuallyAWord = /[^\s,.;:!?。！？、，（）；：【】“”‘’]/.test(token);
 
-            // Instant Load if data exists!
-            if (h.data) {
-              setWordData(h.data);
-              setIsSaved(true); // It's already saved
-              setShowTopSheet(true);
-            } else {
-              // Fallback if old highlight data without snapshot
-              handleExplainSelection();
-            }
-          }}
-        >
-          {text.substring(h.start, h.end)}
-        </mark>
-      );
+          if (!isActuallyAWord) {
+            return <span key={`raw-space-${idx}-${tIdx}`}>{token}</span>;
+          }
 
-      lastIndex = h.end;
+          return (
+            <span
+              key={`raw-word-${idx}-${tIdx}`}
+              className="px-[1px] hover:bg-yellow-100/50 hover:text-blue-600 rounded-sm cursor-pointer transition-colors duration-150 active:bg-yellow-200 active:scale-95 inline-block"
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = (e.target as HTMLElement).getBoundingClientRect();
+                setSelection({
+                  text: token,
+                  rect,
+                  start,
+                  end
+                });
+                // In Smart mode, we can directly trigger explain if it's a single word click
+                // for immediate premium feel, or just show the tooltip.
+                // Let's show the tooltip first to allow color choices.
+              }}
+            >
+              {token}
+            </span>
+          );
+        });
+      }
+
+      // Default Standard Selection Mode
+      return <span key={`raw-${idx}`}>{seg.text}</span>;
     });
-
-    // Remaining text
-    if (lastIndex < text.length) {
-      elements.push(<span key={`text-end`}>{text.substring(lastIndex)}</span>);
-    }
-
-    return elements;
   };
 
   return (
@@ -1099,26 +1138,50 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
 
       {/* Main Text Content */}
       <div className="max-w-2xl mx-auto p-8 relative z-10">
-        <button
-          onClick={handleChangeText}
-          className="mb-8 flex items-center gap-2 text-gray-400 hover:text-gray-600 transition-colors group"
-        >
-          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-gray-200">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
+        <div className="mb-8 flex items-center justify-between">
+          <button
+            onClick={handleChangeText}
+            className="flex items-center gap-2 text-gray-400 hover:text-gray-600 transition-colors group"
+          >
+            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-gray-200">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </div>
+            <span className="text-sm font-medium">{t('changeText', appLanguage)}</span>
+          </button>
+
+          {/* Selection Mode Toggle */}
+          <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
+            <button
+              onClick={() => setIsSmartSelection(false)}
+              className={`p-1.5 rounded-lg transition-all ${!isSmartSelection ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+              title="Standard Selection (Drag)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setIsSmartSelection(true)}
+              className={`p-1.5 rounded-lg transition-all ${isSmartSelection ? 'bg-white shadow-sm text-[#FFB800]' : 'text-gray-400 hover:text-gray-600'}`}
+              title="Smart Mode (Tap words)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
+              </svg>
+            </button>
           </div>
-          <span className="text-sm font-medium">{t('changeText', appLanguage)}</span>
-        </button>
+        </div>
 
         <div
-          onMouseUp={handleTextSelection}
-          onTouchEnd={handleTextSelection}
+          onMouseUp={!isSmartSelection ? handleTextSelection : undefined}
+          onTouchEnd={!isSmartSelection ? handleTextSelection : undefined}
           onClick={handleContainerClick}
-          className="prose prose-lg prose-slate max-w-none"
+          className={`prose prose-lg prose-slate max-w-none ${isSmartSelection ? 'select-none' : ''}`}
         >
           <div
-            className="text-lg sm:text-xl text-[#374151] leading-loose whitespace-pre-wrap font-serif selection:bg-gray-300 selection:text-black"
+            className={`text-lg sm:text-xl text-[#374151] leading-loose whitespace-pre-wrap font-serif ${!isSmartSelection ? 'selection:bg-gray-300 selection:text-black' : ''}`}
             style={{
               lineHeight: '2',
               wordBreak: 'break-word'
