@@ -78,6 +78,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
   const [isPlayingOriginalAudio, setIsPlayingOriginalAudio] = useState(false);
   const [activeAnalysisTab, setActiveAnalysisTab] = useState<'analysis' | 'examples' | 'insights'>('analysis');
   const [isSmartSelection, setIsSmartSelection] = useState(true); // Default to smart for better mobile exp
+  const [smartSelectionIndices, setSmartSelectionIndices] = useState<number[]>([]);
 
   // Load text history from localStorage
   const loadTextHistory = () => {
@@ -228,6 +229,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
     setActiveHighlightId(null);
     setIsLoading(false);
     setWordData(null);
+    setSmartSelectionIndices([]);
   };
 
   const handleClearText = () => {
@@ -547,6 +549,44 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
     handleClosePanel();
   };
 
+  // Join smart selection into a single phrase
+  const getSmartSelectionPhrase = () => {
+    if (smartSelectionIndices.length === 0) return "";
+    const sorted = [...smartSelectionIndices].sort((a, b) => a - b);
+
+    // We get all tokens for the current text to find the strings
+    const allTokens = text.split(/(\s+|[,.!?;:()\[\]{}""'']|[。！？、，（）；：【】“”‘’])/g).filter(t => t !== '');
+
+    // Join from min index to max index to capture spaces in between
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+
+    return allTokens.slice(min, max + 1).join('');
+  };
+
+  const handleSmartExplain = () => {
+    const phrase = getSmartSelectionPhrase();
+    if (!phrase) return;
+
+    // To use handleExplainSelection, we need a Mock Selection object
+    // We'll calculate the offsets
+    const allTokens = text.split(/(\s+|[,.!?;:()\[\]{}""'']|[。！？、，（）；：【】“”‘’])/g).filter(t => t !== '');
+    let startOffset = 0;
+    for (let i = 0; i < Math.min(...smartSelectionIndices); i++) {
+      startOffset += allTokens[i].length;
+    }
+
+    setSelection({
+      text: phrase,
+      rect: { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0, x: 0, y: 0 } as DOMRect, // Placeholder
+      start: startOffset,
+      end: startOffset + phrase.length
+    });
+
+    handleExplainSelection();
+    setSmartSelectionIndices([]); // Clear after explaining
+  };
+
   if (!isReading) {
     // Mode Input
     return (
@@ -745,16 +785,28 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
 
       // If Smart Selection is ON, split the raw text into interactive words
       if (isSmartSelection) {
-        // Regex splits characters/words but preserves spaces
-        // Supporting CJK and Latin
         const tokens = seg.text.split(/(\s+|[,.!?;:()\[\]{}""'']|[。！？、，（）；：【】“”‘’])/g).filter(t => t !== '');
-        let currentOffset = seg.start;
+
+        // We need a stable global token index to handle cross-segment selection if needed
+        // For simplicity in this segment based render, we'll prefix or use an accumulator
+        // But since we only tokenise RAW segments, it's easier to just count tokens globally once
+        const allTextTokens = text.split(/(\s+|[,.!?;:()\[\]{}""'']|[。！？、，（）；：【】“”‘’])/g).filter(t => t !== '');
+
+        // Find where this segment starts in terms of token index
+        let segmentTokenStartIdx = 0;
+        let charAcc = 0;
+        for (let i = 0; i < allTextTokens.length; i++) {
+          if (charAcc === seg.start) {
+            segmentTokenStartIdx = i;
+            break;
+          }
+          charAcc += allTextTokens[i].length;
+        }
 
         return tokens.map((token, tIdx) => {
-          const start = currentOffset;
-          currentOffset += token.length;
-          const end = currentOffset;
+          const globalTIdx = segmentTokenStartIdx + tIdx;
           const isActuallyAWord = /[^\s,.;:!?。！？、，（）；：【】“”‘’]/.test(token);
+          const isSelected = smartSelectionIndices.includes(globalTIdx);
 
           if (!isActuallyAWord) {
             return <span key={`raw-space-${idx}-${tIdx}`}>{token}</span>;
@@ -763,19 +815,20 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
           return (
             <span
               key={`raw-word-${idx}-${tIdx}`}
-              className="px-[1px] hover:bg-yellow-100/50 hover:text-blue-600 rounded-sm cursor-pointer transition-colors duration-150 active:bg-yellow-200 active:scale-95 inline-block"
+              className={`px-[1px] m-[1px] rounded-md cursor-pointer transition-all duration-200 inline-block
+                ${isSelected
+                  ? 'bg-[#FFB800] text-white shadow-sm scale-110 z-10'
+                  : 'hover:bg-yellow-100 text-[#374151] hover:text-blue-600 active:scale-95'
+                }`}
               onClick={(e) => {
                 e.stopPropagation();
-                const rect = (e.target as HTMLElement).getBoundingClientRect();
-                setSelection({
-                  text: token,
-                  rect,
-                  start,
-                  end
+                setSmartSelectionIndices(prev => {
+                  if (prev.includes(globalTIdx)) {
+                    return prev.filter(i => i !== globalTIdx);
+                  } else {
+                    return [...prev, globalTIdx];
+                  }
                 });
-                // In Smart mode, we can directly trigger explain if it's a single word click
-                // for immediate premium feel, or just show the tooltip.
-                // Let's show the tooltip first to allow color choices.
               }}
             >
               {token}
@@ -1193,8 +1246,49 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
 
         {/* Helper Hint */}
         <div className="mt-12 text-center text-gray-400 text-sm italic">
-          <p>💡 {appLanguage === 'Bahasa Indonesia' ? 'Sorot teks/kata untuk menerjemahkan' : 'Highlight text/word to translate'}</p>
+          <p>💡 {appLanguage === 'Bahasa Indonesia' ? 'Sentuh kata-kata untuk memilih' : 'Tap words to select'}</p>
         </div>
+
+        {/* Floating Smart Selection Bar */}
+        <AnimatePresence>
+          {isSmartSelection && smartSelectionIndices.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.9 }}
+              className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] w-auto max-w-[90vw]"
+            >
+              <div className="bg-white/90 backdrop-blur-md border border-amber-200 shadow-2xl rounded-2xl p-4 flex flex-col gap-3 min-w-[280px]">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-xs font-bold text-amber-600 uppercase tracking-widest">Selection</span>
+                  <button
+                    onClick={() => setSmartSelectionIndices([])}
+                    className="text-[10px] text-gray-400 hover:text-red-500 font-bold uppercase transition-colors"
+                  >
+                    Batal
+                  </button>
+                </div>
+
+                <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100 max-h-24 overflow-y-auto">
+                  <p className="text-sm text-[#1F2937] font-medium leading-normal italic">
+                    "{getSmartSelectionPhrase()}"
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleSmartExplain}
+                  className="w-full py-3 bg-[#FFB800] hover:bg-[#E6A600] text-white font-bold rounded-xl shadow-lg shadow-amber-200 transition-all flex items-center justify-center gap-2 group active:scale-95"
+                >
+                  <span className="text-lg">✨</span>
+                  <span>Jelaskan</span>
+                  <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
