@@ -77,7 +77,7 @@ export default function BottomNavigationBar({
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
           className="fixed bottom-0 left-0 right-0 z-50"
         >
-          <div className="bg-white/80 backdrop-blur-lg border-t border-[#E5E7EB] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1),0_-2px_4px_-1px_rgba(0,0,0,0.06)]">
+          <div className="bg-white/85 backdrop-blur-lg border-t border-[var(--lab-border)] shadow-[0_-12px_24px_-20px_rgba(20,26,35,0.35)]">
             <div className="max-w-md mx-auto px-4 py-2">
               <div className="flex items-center justify-around">
                 {tabs.map((tab) => (
@@ -86,8 +86,8 @@ export default function BottomNavigationBar({
                     onClick={() => onTabChange(tab.id)}
                     className={`relative flex flex-col items-center justify-center gap-1 py-2 px-4 rounded-xl transition-all duration-200 ${
                       activeTab === tab.id
-                        ? 'text-[#FFB800]'
-                        : 'text-[#6B7280] hover:text-[#1F2937]'
+                        ? 'text-[var(--lab-accent)]'
+                        : 'text-[var(--lab-ink-muted)] hover:text-[var(--lab-ink)]'
                     }`}
                   >
                     <motion.div
@@ -101,12 +101,12 @@ export default function BottomNavigationBar({
                     </span>
                     {/* Titik kecil untuk notifikasi (hanya jika < 3 kata yang perlu ditinjau) */}
                     {tab.id === 'home' && dueReviewCount > 0 && dueReviewCount < 3 && (
-                      <span className="absolute top-1 right-1 w-2 h-2 bg-purple-500 rounded-full"></span>
+                      <span className="absolute top-1 right-1 w-2 h-2 bg-[var(--lab-accent)] rounded-full"></span>
                     )}
                     {activeTab === tab.id && (
                       <motion.div
                         layoutId="activeTab"
-                        className="absolute bottom-0 h-1 w-12 bg-[#FFB800] rounded-t-full"
+                        className="absolute bottom-0 h-1 w-12 bg-[var(--lab-accent)] rounded-t-full"
                         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                       />
                     )}

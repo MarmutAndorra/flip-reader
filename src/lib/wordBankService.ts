@@ -650,7 +650,7 @@ export async function migrateLocalDataToSupabase(userId: string): Promise<{
             .upsert({
               user_id: userId,
               date: date,
-              count: count,
+              words_learned: count,
             }, {
               onConflict: 'user_id,date',
             });

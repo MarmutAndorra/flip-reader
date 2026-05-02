@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { t, translatePartOfSpeech, normalizeLanguage } from '@/lib/translations';
 import { playWordAudio } from '@/lib/audioUtils';
@@ -55,7 +55,12 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
   const [isReading, setIsReading] = useState(false);
 
   // Selection & UI States
-  const [selection, setSelection] = useState<{ text: string; rect: DOMRect; start: number; end: number } | null>(null);
+  type SelectionState = { text: string; rect: DOMRect; start: number; end: number };
+  const [selection, setSelection] = useState<SelectionState | null>(null);
+  const selectionRef = useRef<SelectionState | null>(null);
+  const explainInFlightRef = useRef(false);
+  const suppressNextOverlayClickRef = useRef(false);
+  const suppressOverlayClickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showTopSheet, setShowTopSheet] = useState(false);
   const [selectedPhrase, setSelectedPhrase] = useState<string | null>(null);
   const [contextSentence, setContextSentence] = useState<string | null>(null);
@@ -300,13 +305,36 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
       // We can try to get the 'global' offset if we can.
       // For now, let's store the text and we'll try to find its index in the `handleExplainSelection` or via simple search.
 
-      setSelection({
+      const nextSelection = {
         text: textContent,
         rect,
         start: -1, // Placeholder, calculated later or if we can get valid offset
         end: -1
-      });
+      };
+      selectionRef.current = nextSelection;
+      setSelection(nextSelection);
     }
+  };
+
+  const getSelectionSnapshot = (): SelectionState | null => {
+    if (selectionRef.current) return selectionRef.current;
+    if (selection) return selection;
+
+    const windowSelection = window.getSelection();
+    if (windowSelection && !windowSelection.isCollapsed) {
+      const textContent = windowSelection.toString().trim();
+      if (textContent) {
+        const range = windowSelection.getRangeAt(0);
+        return {
+          text: textContent,
+          rect: range.getBoundingClientRect(),
+          start: -1,
+          end: -1
+        };
+      }
+    }
+
+    return null;
   };
 
   // Clear selection when clicking elsewhere
@@ -316,19 +344,24 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
     if (!target.closest('#selection-tooltip')) {
       const windowSelection = window.getSelection();
       if (!windowSelection || windowSelection.isCollapsed) {
+        selectionRef.current = null;
         setSelection(null);
       }
     }
   };
 
-  const handleExplainSelection = async () => {
-    if (!selection) return;
+  const handleExplainSelection = async (overrideSelection?: SelectionState | null) => {
+    const activeSelection = overrideSelection ?? selection ?? selectionRef.current;
+    if (!activeSelection) return;
+    if (explainInFlightRef.current) return;
+    explainInFlightRef.current = true;
 
-    const phrase = selection.text;
+    const phrase = activeSelection.text;
     setIsLoading(true);
     setSelectedPhrase(phrase);
     setShowTopSheet(true);
     setSelection(null); // Clear selection UI after activating
+    selectionRef.current = null;
     setWordData(null);
     setActiveHighlightId(null); // Reset ID since this is a new selection
 
@@ -414,6 +447,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
       });
     } finally {
       setIsLoading(false);
+      explainInFlightRef.current = false;
     }
   };
 
@@ -428,10 +462,38 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
     setIsPlayingAudio(false);
     setIsPlayingExampleAudio(false);
     setIsPlayingOriginalAudio(false);
+    suppressNextOverlayClickRef.current = false;
+    if (suppressOverlayClickTimeoutRef.current) {
+      clearTimeout(suppressOverlayClickTimeoutRef.current);
+      suppressOverlayClickTimeoutRef.current = null;
+    }
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
     setActiveAnalysisTab('analysis'); // Reset tab on close
+  };
+
+  const armOverlaySuppress = () => {
+    suppressNextOverlayClickRef.current = true;
+    if (suppressOverlayClickTimeoutRef.current) {
+      clearTimeout(suppressOverlayClickTimeoutRef.current);
+    }
+    suppressOverlayClickTimeoutRef.current = setTimeout(() => {
+      suppressNextOverlayClickRef.current = false;
+      suppressOverlayClickTimeoutRef.current = null;
+    }, 400);
+  };
+
+  const handleOverlayClick = () => {
+    if (suppressNextOverlayClickRef.current) {
+      suppressNextOverlayClickRef.current = false;
+      if (suppressOverlayClickTimeoutRef.current) {
+        clearTimeout(suppressOverlayClickTimeoutRef.current);
+        suppressOverlayClickTimeoutRef.current = null;
+      }
+      return;
+    }
+    handleClosePanel();
   };
 
   const handleSaveWord = async () => {
@@ -577,14 +639,15 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
       startOffset += allTokens[i].length;
     }
 
-    setSelection({
+    const selectionSnapshot: SelectionState = {
       text: phrase,
       rect: { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0, x: 0, y: 0 } as DOMRect, // Placeholder
       start: startOffset,
       end: startOffset + phrase.length
-    });
+    };
 
-    handleExplainSelection();
+    selectionRef.current = selectionSnapshot;
+    handleExplainSelection(selectionSnapshot);
     setSmartSelectionIndices([]); // Clear after explaining
   };
 
@@ -761,12 +824,14 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
             className="cursor-pointer transition-opacity hover:opacity-80"
             onClick={(e) => {
               e.stopPropagation();
-              setSelection({
+              const highlightSelection = {
                 text: seg.text,
                 rect: (e.target as HTMLElement).getBoundingClientRect(),
                 start: seg.start,
                 end: seg.end
-              });
+              };
+              selectionRef.current = highlightSelection;
+              setSelection(highlightSelection);
               setSelectedPhrase(seg.text);
               setContextSentence(seg.data?.originalSentence || null);
               setActiveHighlightId(seg.highlightId!);
@@ -775,7 +840,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
                 setIsSaved(true);
                 setShowTopSheet(true);
               } else {
-                handleExplainSelection();
+                handleExplainSelection(highlightSelection);
               }
             }}
           >
@@ -844,37 +909,57 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
   };
 
   return (
-    <div className="min-h-screen bg-[#fdfbf7] font-serif transition-colors duration-300">
+    <div className="min-h-screen paper-shell font-reading transition-colors duration-300">
 
       {/* Tooltip / Floating Menu for Selection */}
       {selection && !showTopSheet && (
         <div
           id="selection-tooltip"
-          className="fixed z-[60] bg-[#1F2937] text-white px-4 py-2 rounded-full shadow-xl flex items-center gap-2 cursor-pointer hover:bg-black transition-all transform -translate-x-1/2 hover:scale-105 active:scale-95"
+          className="fixed z-[60] bg-[var(--paper-ink)] text-white px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer hover:bg-[#1f1a14] transition-all transform -translate-x-1/2 active:scale-95"
           style={{
             top: `${selection.rect.top - 50}px`,
             left: `${selection.rect.left + selection.rect.width / 2}px`,
           }}
-          onMouseDown={(e) => {
-            e.preventDefault(); // Prevent clearing selection
+          onPointerDown={(e) => {
+            e.preventDefault();
             e.stopPropagation();
-            handleExplainSelection();
+            const snapshot = getSelectionSnapshot();
+            if (snapshot) {
+              armOverlaySuppress();
+              selectionRef.current = snapshot;
+              setSelection(snapshot);
+              handleExplainSelection(snapshot);
+            }
           }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const snapshot = getSelectionSnapshot();
+            if (snapshot) {
+              armOverlaySuppress();
+              selectionRef.current = snapshot;
+              setSelection(snapshot);
+              handleExplainSelection(snapshot);
+            }
+          }}
+          role="button"
+          aria-label="Jelaskan seleksi"
         >
-          <span className="text-sm font-medium">✨ Jelaskan</span>
-          <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="text-[11px] leading-none">✨</span>
+          <span className="text-xs font-semibold leading-none">Jelaskan</span>
+          <svg className="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
 
           {/* Arrow pointing down */}
-          <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-[#1F2937]"></div>
+          <div className="absolute -bottom-1.5 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[7px] border-t-[var(--paper-ink)]"></div>
         </div>
       )}
 
       {/* Top Sheet Panel - Sliding from Top */}
       <div
-        className={`fixed top-0 left-0 right-0 z-[100] bg-white shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transform transition-transform duration-300 ease-in-out ${showTopSheet ? 'translate-y-0' : '-translate-y-full'
-          } max-h-[85vh] overflow-y-auto rounded-b-3xl border-b border-gray-100`}
+        className={`fixed top-0 left-0 right-0 z-[100] bg-[var(--paper-surface)] shadow-[0_16px_40px_-24px_rgba(44,35,24,0.6)] transform transition-transform duration-300 ease-in-out ${showTopSheet ? 'translate-y-0' : '-translate-y-full'
+          } max-h-[85vh] overflow-y-auto rounded-b-3xl border-b border-[var(--paper-border)]`}
       >
         <div className="max-w-3xl mx-auto">
           {/* Drag Handle (Visual indicator) */}
@@ -1186,7 +1271,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
       {showTopSheet && (
         <div
           className="fixed inset-0 bg-black/30 z-[90] backdrop-blur-[1px] transition-opacity duration-300"
-          onClick={handleClosePanel}
+          onClick={handleOverlayClick}
         ></div>
       )}
 
@@ -1235,7 +1320,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
           className={`prose prose-lg prose-slate max-w-none ${isSmartSelection ? 'select-none' : ''}`}
         >
           <div
-            className={`text-lg sm:text-xl text-[#374151] leading-loose whitespace-pre-wrap font-serif ${!isSmartSelection ? 'selection:bg-gray-300 selection:text-black' : ''}`}
+            className={`text-lg sm:text-xl text-[var(--paper-ink)] leading-loose whitespace-pre-wrap ${!isSmartSelection ? 'selection:bg-gray-300 selection:text-black' : ''}`}
             style={{
               lineHeight: '2',
               wordBreak: 'break-word'
@@ -1246,7 +1331,7 @@ export default function ReaderCanvas({ appLanguage = 'Bahasa Indonesia' }: Reade
         </div>
 
         {/* Helper Hint */}
-        <div className="mt-12 text-center text-gray-400 text-sm italic">
+        <div className="mt-12 text-center text-[var(--paper-muted)] text-sm italic">
           <p>💡 {appLanguage === 'Bahasa Indonesia' ? 'Sentuh kata-kata untuk memilih' : 'Tap words to select'}</p>
         </div>
 

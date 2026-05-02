@@ -1,95 +1,58 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  /* Color Palette */
-  --primary-color: #FFB800;
-  --primary-hover: #E6A600;
-  --background-color: #F8F9FA;
-  --text-primary: #1F2937;
-  --text-secondary: #6B7280;
-  --border-color: #E5E7EB;
-  
-  /* Accent Colors (Pastel) */
-  --accent-blue: #DBEAFE;
-  --accent-green: #D1FAE5;
-  --accent-purple: #E9D5FF;
-  --accent-pink: #FCE7F3;
-  --accent-yellow: #FEF3C7;
-  
-  /* Card Styling */
-  --card-radius: 12px;
-  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --card-border: 1px solid #E5E7EB;
-  
-  /* Typography */
-  --font-serif: Georgia, 'Times New Roman', serif;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  --green-950:   #0F2518;
+  --green-900:   #1B3A2D;
+  --green-800:   #2D6A4F;
+  --green-700:   #40916C;
+  --green-600:   #52B788;
+  --green-400:   #74C69D;
+  --green-200:   #B7E4C7;
+  --green-100:   #D8F3DC;
+  --green-50:    #EBF5EE;
+  --cloud:       #F5FAF6;
+  --surface:     #FFFFFF;
+  --text-1:      #1B3229;
+  --text-2:      #5A8070;
+  --text-3:      #9ABFAF;
+  --border:      #D0E9D8;
+  --shadow-xs:   0 1px 2px rgba(27,67,50,.05);
+  --shadow-sm:   0 2px 8px rgba(27,67,50,.08);
+  --shadow-md:   0 4px 20px rgba(27,67,50,.12);
+  --shadow-lg:   0 8px 32px rgba(27,67,50,.18);
+  --nav-h:       64px;
+  --r-sm:        8px;
+  --r-md:        14px;
+  --r-lg:        20px;
+  --r-xl:        28px;
+  --r-full:      999px;
 }
 
-body {
-  background-color: var(--background-color);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Card Base Style */
-.card {
-  background: white;
-  border: var(--card-border);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-  transition: all 0.2s ease-in-out;
+body {
+  background: var(--cloud);
+  color: var(--text-1);
+  min-height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  overflow-x: hidden;
 }
 
-.card:hover {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  transform: translateY(-1px);
-}
+/* scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--green-200); border-radius: 4px; }
 
-/* Button Base Style */
-.btn-primary {
-  background-color: var(--primary-color);
-  color: white;
-  border-radius: var(--card-radius);
-  transition: all 0.2s ease-in-out;
-  box-shadow: var(--card-shadow);
-}
+/* page wrapper (space for bottom nav) */
+.page { padding-bottom: calc(var(--nav-h) + 20px); min-height: 100dvh; }
 
-.btn-primary:hover {
-  background-color: var(--primary-hover);
-  transform: scale(0.98);
-  box-shadow: 0 6px 8px -1px rgba(0, 0, 0, 0.12), 0 3px 5px -1px rgba(0, 0, 0, 0.08);
-}
-
-.btn-primary:active {
-  transform: scale(0.96);
-}
-
-/* Serif Font for App Title */
-.app-title {
-  font-family: var(--font-serif);
-  font-weight: 700;
-}
-
-/* Safe Area Utilities for iOS devices with notches */
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-.mb-safe {
-  margin-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-/* Ensure modal overlay covers safe areas */
-.modal-overlay {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
-}
-
-/* Prevent body scroll when modal is open */
-body.modal-open {
-  overflow: hidden;
-  position: fixed;
-  width: 100%;
-}
+/* text selection */
+::selection { background: var(--green-200); color: var(--green-950); }

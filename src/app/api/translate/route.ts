@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
 export async function POST(request: NextRequest) {
   try {
     // Check API key with logging
@@ -30,51 +28,7 @@ export async function POST(request: NextRequest) {
       ? "Detect the source language of the input automatically."
       : `The input text is in ${sourceLanguage}.`;
 
-    // --- 1. SMART CACHING STRATEGY ---
-    // Try to find the word in our Shared Global Cache first.
-    // This saves AI tokens and speeds up response time significantly.
-
-    // We use the Service Role Key if available to bypass RLS, otherwise fallback to Anon Key
-    // Note: Ensure SUPABASE_SERVICE_ROLE_KEY is set in .env.local for write access to cache if RLS is strict
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
-    // Normalize cache key: lowercase trimmed + lang context
-    // We should include source language in cache key implicitly via term uniqueness, 
-    // but ideally we should have source_language col. 
-    // For now, term + target_language is unique enough for strict matches.
-    const cacheTerm = word.trim().toLowerCase();
-
-    try {
-      const { data: cacheData, error: cacheError } = await supabaseAdmin
-        .from('global_word_cache')
-        .select('id, data, frequency')
-        .eq('term', cacheTerm)
-        .eq('target_language', targetLanguage)
-        .single();
-
-      if (cacheData && !cacheError) {
-        console.log(`[CACHE HIT] Found "${cacheTerm}" in global cache.`);
-
-        // Asynchronously update frequency (fire and forget)
-        supabaseAdmin.rpc('increment_cache_frequency', { row_id: cacheData.id }).then(() => { });
-        // Or simple update if RPC not set:
-        // supabaseAdmin.from('global_word_cache').update({ frequency: (cacheData.frequency || 1) + 1 }).eq('term', cacheTerm);
-
-        // Return cached data immediately!
-        return NextResponse.json({
-          ...cacheData.data,
-          _source: 'cache' // Debug flag
-        });
-      }
-    } catch (e) {
-      console.warn('[CACHE SKIP] Error checking cache:', e);
-      // Generate AI response as fallback
-    }
-
-    // --- 2. AI GENERATION (Cache Miss) ---
+    // --- AI GENERATION ---
     // Use Groq API with llama-3.3-70b-versatile (matching playground config)
     const response = await fetch(
       'https://api.groq.com/openai/v1/chat/completions',
@@ -335,33 +289,6 @@ Provide:
       originalSentenceTranslation: parsedData.original_sentence_translation || '',
       learningEssence: parsedData.learning_essence || '',
     };
-
-    // --- 3. SAVE TO CACHE (Async) ---
-    // Save the new result to global cache for future users
-    // We don't await this to keep response fast
-    (async () => {
-      try {
-        const { error: insertError } = await supabaseAdmin
-          .from('global_word_cache')
-          .insert({
-            term: cacheTerm,
-            target_language: targetLanguage,
-            data: resultData
-            // frequency maps to default 1
-          });
-
-        if (insertError) {
-          // Duplicate key error is fine (race condition), just ignore
-          if (insertError.code !== '23505') {
-            console.warn('[CACHE SAVE ERROR]', insertError);
-          }
-        } else {
-          console.log(`[CACHE SAVED] Saved "${cacheTerm}" to global cache.`);
-        }
-      } catch (err) {
-        console.warn('Cache save failed', err);
-      }
-    })();
 
     return NextResponse.json(resultData);
   } catch (error) {

@@ -48,7 +48,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#FEF3C7] via-[#FDE68A] to-[#F8F9FA] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[radial-gradient(120%_120%_at_50%_-20%,#fff4cc,transparent)] bg-[var(--lab-bg)] flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -57,13 +57,13 @@ export default function LoginPage() {
       >
         {/* Logo & Title */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-[#1F2937] mb-2">Flip Reader 🧠</h1>
-          <p className="text-[#6B7280]">Masuk ke akunmu untuk melanjutkan</p>
+          <h1 className="text-3xl font-semibold text-[var(--lab-ink)] mb-2 tracking-tight">Flip Reader 🧠</h1>
+          <p className="text-[var(--lab-ink-muted)]">Masuk ke akunmu untuk melanjutkan</p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] p-8">
-          <h2 className="text-xl font-bold text-[#1F2937] mb-6">Masuk</h2>
+        <div className="lab-surface rounded-2xl p-8">
+          <h2 className="text-xl font-semibold text-[var(--lab-ink)] mb-6">Masuk</h2>
 
           {error && (
             <motion.div
@@ -77,7 +77,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-[#1F2937] mb-2">
+              <label className="block text-sm font-medium text-[var(--lab-ink)] mb-2">
                 Email
               </label>
               <input
@@ -86,12 +86,12 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="nama@email.com"
                 required
-                className="w-full px-4 py-3 border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FFB800] text-[#1F2937] text-sm transition-all duration-200"
+                className="w-full px-4 py-3 border border-[var(--lab-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--lab-accent)] text-[var(--lab-ink)] text-sm transition-all duration-200 bg-[var(--lab-surface)]"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#1F2937] mb-2">
+              <label className="block text-sm font-medium text-[var(--lab-ink)] mb-2">
                 Password
               </label>
               <div className="relative">
@@ -101,12 +101,12 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Masukkan password"
                   required
-                  className="w-full px-4 py-3 border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FFB800] text-[#1F2937] text-sm pr-12 transition-all duration-200"
+                className="w-full px-4 py-3 border border-[var(--lab-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--lab-accent)] text-[var(--lab-ink)] text-sm pr-12 transition-all duration-200 bg-[var(--lab-surface)]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#6B7280] hover:text-[#1F2937]"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[var(--lab-ink-muted)] hover:text-[var(--lab-ink)]"
                 >
                   {showPassword ? (
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -125,7 +125,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-[#FFB800] text-white rounded-xl font-semibold hover:bg-[#E6A600] disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_14px_0_rgba(255,184,0,0.39)] hover:shadow-[0_6px_20px_rgba(255,184,0,0.5)] transition-all duration-200 active:scale-[0.98]"
+              className="w-full py-3 bg-[var(--lab-accent)] text-[#1f2328] rounded-xl font-semibold hover:bg-[var(--lab-accent-strong)] disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_12px_24px_-18px_rgba(20,26,35,0.45)] transition-all duration-200 active:scale-[0.98]"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -142,9 +142,9 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-[#6B7280]">
+            <p className="text-sm text-[var(--lab-ink-muted)]">
               Belum punya akun?{' '}
-              <Link href="/register" className="text-[#FFB800] font-semibold hover:underline">
+              <Link href="/register" className="text-[var(--lab-accent-strong)] font-semibold hover:underline">
                 Daftar sekarang
               </Link>
             </p>
@@ -155,7 +155,7 @@ export default function LoginPage() {
         <div className="mt-6 text-center">
           <Link
             href="/"
-            className="text-sm text-[#6B7280] hover:text-[#1F2937] transition-colors"
+            className="text-sm text-[var(--lab-ink-muted)] hover:text-[var(--lab-ink)] transition-colors"
           >
             Lanjutkan tanpa masuk →
           </Link>
