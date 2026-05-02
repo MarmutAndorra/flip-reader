@@ -153,6 +153,32 @@ export default function HomePage() {
             </div>
           </Link>
 
+          <Link href="/flashcard" style={{ textDecoration: 'none' }}>
+            <div style={{
+              background: 'var(--surface)',
+              borderRadius: 'var(--r-md)',
+              padding: '20px 16px',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--shadow-sm)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10,
+                background: 'var(--green-50)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 20,
+              }}>
+                🧠
+              </div>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', marginBottom: 2 }}>Flashcard</p>
+                <p style={{ fontSize: 12, color: 'var(--text-2)' }}>Review & hafal kata</p>
+              </div>
+            </div>
+          </Link>
+
           <Link href="/library" style={{ textDecoration: 'none' }}>
             <div style={{
               background: 'var(--surface)',

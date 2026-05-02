@@ -2,25 +2,27 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --green-950:   #0F2518;
-  --green-900:   #1B3A2D;
-  --green-800:   #2D6A4F;
-  --green-700:   #40916C;
-  --green-600:   #52B788;
-  --green-400:   #74C69D;
-  --green-200:   #B7E4C7;
-  --green-100:   #D8F3DC;
-  --green-50:    #EBF5EE;
-  --cloud:       #F5FAF6;
+  /* Amber / warm palette — restored from original Flip Reader theme */
+  --green-950:   #451A03;
+  --green-900:   #78350F;
+  --green-800:   #B45309;
+  --green-700:   #D97706;
+  --green-600:   #F59E0B;
+  --green-500:   #FFB800;
+  --green-400:   #FBBF24;
+  --green-200:   #FDE68A;
+  --green-100:   #FEF3C7;
+  --green-50:    #FFFBEB;
+  --cloud:       #F8F9FA;
   --surface:     #FFFFFF;
-  --text-1:      #1B3229;
-  --text-2:      #5A8070;
-  --text-3:      #9ABFAF;
-  --border:      #D0E9D8;
-  --shadow-xs:   0 1px 2px rgba(27,67,50,.05);
-  --shadow-sm:   0 2px 8px rgba(27,67,50,.08);
-  --shadow-md:   0 4px 20px rgba(27,67,50,.12);
-  --shadow-lg:   0 8px 32px rgba(27,67,50,.18);
+  --text-1:      #1F2937;
+  --text-2:      #6B7280;
+  --text-3:      #9CA3AF;
+  --border:      #E5E7EB;
+  --shadow-xs:   0 1px 2px rgba(0,0,0,.05);
+  --shadow-sm:   0 2px 8px rgba(0,0,0,.08);
+  --shadow-md:   0 4px 20px rgba(0,0,0,.10);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,.14);
   --nav-h:       64px;
   --r-sm:        8px;
   --r-md:        14px;

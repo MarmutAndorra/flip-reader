@@ -40,6 +40,18 @@ const tabs = [
       </svg>
     ),
   },
+  {
+    href: '/flashcard',
+    label: 'Hafal',
+    icon: (active: boolean) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'}
+        stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="5" width="20" height="14" rx="2" />
+        <path d="M16 2v4M8 2v4" strokeWidth="1.8" />
+        <line x1="2" y1="10" x2="22" y2="10" />
+      </svg>
+    ),
+  },
 ];
 
 export default function BottomNav() {
