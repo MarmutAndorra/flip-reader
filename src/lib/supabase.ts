@@ -5,7 +5,12 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Using implicit flow (no server-side callback needed for this client-only app)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    flowType: 'implicit',
+  },
+});
 
 // Types for database
 export interface WordBankItem {
