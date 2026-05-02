@@ -40,8 +40,12 @@ function FlipCard({
   const [flipped, setFlipped] = useState(false);
   const [dragX, setDragX] = useState(0);
   const [swiping, setSwiping] = useState<'left' | 'right' | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const startX = useRef(0);
+  const startY = useRef(0);
   const dragging = useRef(false);
+  const isHorizontal = useRef(false);
+  const dragXRef = useRef(0); // track dragX without stale closure in onEnd
   const THRESHOLD = 90;
 
   // Reset when word changes
@@ -49,39 +53,88 @@ function FlipCard({
     setFlipped(false);
     setDragX(0);
     setSwiping(null);
+    dragging.current = false;
+    isHorizontal.current = false;
+    dragXRef.current = 0;
   }, [word.term]);
 
-  const onStart = (x: number) => {
+  // Attach non-passive touchmove so we can preventDefault and block page scroll
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!dragging.current) return;
+      const dx = e.touches[0].clientX - startX.current;
+      const dy = e.touches[0].clientY - startY.current;
+      // Determine gesture axis on first significant movement
+      if (!isHorizontal.current && (Math.abs(dx) + Math.abs(dy)) > 8) {
+        isHorizontal.current = Math.abs(dx) > Math.abs(dy);
+      }
+      if (isHorizontal.current) {
+        e.preventDefault(); // ← blocks browser scroll / pull
+        dragXRef.current = dx;
+        setDragX(dx);
+        setSwiping(Math.abs(dx) > 20 ? (dx > 0 ? 'right' : 'left') : null);
+      }
+    };
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', handleTouchMove);
+  }, []);
+
+  const onTouchStart = (e: React.TouchEvent) => {
     dragging.current = true;
-    startX.current = x;
+    isHorizontal.current = false;
+    startX.current = e.touches[0].clientX;
+    startY.current = e.touches[0].clientY;
+    dragXRef.current = 0;
   };
-  const onMove = (x: number) => {
+  const onTouchEnd = () => {
     if (!dragging.current) return;
-    const dx = x - startX.current;
+    dragging.current = false;
+    const dx = dragXRef.current;
+    if (dx > THRESHOLD) { onSwipeRight(); return; }
+    if (dx < -THRESHOLD) { onSwipeLeft(); return; }
+    setDragX(0);
+    setSwiping(null);
+    dragXRef.current = 0;
+  };
+  // Mouse support (desktop)
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    startX.current = e.clientX;
+    dragXRef.current = 0;
+  };
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!dragging.current) return;
+    const dx = e.clientX - startX.current;
+    dragXRef.current = dx;
     setDragX(dx);
     setSwiping(Math.abs(dx) > 20 ? (dx > 0 ? 'right' : 'left') : null);
   };
-  const onEnd = () => {
+  const onMouseUp = () => {
     if (!dragging.current) return;
     dragging.current = false;
-    if (dragX > THRESHOLD) { onSwipeRight(); return; }
-    if (dragX < -THRESHOLD) { onSwipeLeft(); return; }
+    const dx = dragXRef.current;
+    if (dx > THRESHOLD) { onSwipeRight(); return; }
+    if (dx < -THRESHOLD) { onSwipeLeft(); return; }
     setDragX(0);
     setSwiping(null);
+    dragXRef.current = 0;
   };
 
   const pos = posColor[word.partOfSpeech] ?? defaultPos;
 
   return (
     <div
+      ref={containerRef}
       style={{ perspective: 1000, userSelect: 'none' }}
-      onTouchStart={e => onStart(e.touches[0].clientX)}
-      onTouchMove={e => onMove(e.touches[0].clientX)}
-      onTouchEnd={onEnd}
-      onMouseDown={e => { e.preventDefault(); onStart(e.clientX); }}
-      onMouseMove={e => onMove(e.clientX)}
-      onMouseUp={onEnd}
-      onMouseLeave={onEnd}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
     >
       {/* Swipe hint overlay */}
       {swiping && (
